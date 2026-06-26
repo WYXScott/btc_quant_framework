@@ -1,0 +1,663 @@
+project:
+  name: btc_quant_framework
+  version: 3.0.4
+  timezone: UTC
+
+exchange:
+  name: okx
+  market_type: swap          # OKX USDT-margined perpetual swap public market data
+  testnet: false             # public market data only; trading remains disabled
+  rate_limit: true
+
+symbol:
+  base: BTC
+  quote: USDT
+  ccxt_symbol: BTC/USDT:USDT
+  raw_symbol: BTC-USDT-SWAP
+  okx_inst_id: BTC-USDT-SWAP
+
+data:
+  timeframe: 4h
+  since: '2019-01-01T00:00:00Z'
+  raw_path: data/raw/OKX_BTC_USDT_SWAP_4h.parquet
+  feature_path: data/processed/OKX_BTC_USDT_SWAP_4h_features.parquet
+  dataset_path: data/processed/OKX_BTC_USDT_SWAP_4h_dataset.parquet
+
+# V3.0.3: OKX native public-market-data settings.
+# OKX REST is used for BTC-USDT-SWAP historical/recent candles.
+# OKX WebSocket test scripts are included for realtime public market data.
+# Private trading APIs remain disabled by default. Use environment proxy settings
+# if direct access to www.okx.com is unavailable.
+download:
+  downloader: okx_native          # okx_native | binance_native | ccxt | auto
+  base_url: https://www.okx.com
+  inst_id: BTC-USDT-SWAP
+  bar: 4H
+  endpoint: history-candles
+  timeout_seconds: 30
+  max_retries: 5
+  retry_sleep_seconds: 2
+  limit: 100
+  max_batches: 1000
+  overlap_bars: 50
+  full_refresh: true
+  prefer_base_volume: true
+  use_env_proxy: true
+  rate_limit: true
+
+
+features:
+  windows: [3, 6, 12, 24, 48, 120]
+  atr_window: 14
+  rsi_window: 14
+  dropna: true
+
+labels:
+  horizon_bars: 6            # 6 * 4h = 24h
+  positive_return_threshold: 0.002
+
+model:
+  type: extra_trees_classifier
+  model_path: models/btc_direction_model.joblib
+  feature_list_path: models/btc_feature_columns.txt
+  train_end: '2023-12-31'
+  valid_end: '2024-12-31'
+  probability_buy_threshold: 0.58
+  probability_exit_threshold: 0.50
+
+calibration:
+  # V2.5: post-hoc probability calibration and confidence-tier trading signals.
+  method: isotonic              # isotonic | sigmoid | none
+  bins: 10
+  calibrated_model_path: models/btc_direction_model_calibrated.joblib
+  feature_list_path: models/btc_feature_columns_calibrated.txt
+  output_path: reports/calibration
+  confidence_output_path: reports/signal_confidence
+  confidence:
+    weak_threshold: 0.55
+    medium_threshold: 0.60
+    strong_threshold: 0.65
+    weak_exposure: 0.75
+    medium_exposure: 1.50
+    strong_exposure: 2.50
+    max_exposure: 3.00
+    trend_filter: true
+    min_expected_return: 0.0
+
+walk_forward:
+  train_window_days: 1095    # rolling 3-year training window
+  test_window_days: 90       # each fold predicts about one quarter
+  min_train_bars: 1000
+  start: null                # null = first timestamp + train_window_days
+  end: null                  # null = dataset end
+
+walk_forward_calibration:
+  # V2.6: leak-resistant train -> calibration -> test probability calibration.
+  output_path: reports/walk_forward_calibration
+  train_window_days: 1095
+  calibration_window_days: 180
+  test_window_days: 90
+  min_train_bars: 1000
+  min_calibration_bars: 180
+  min_test_bars: 30
+  start: null
+  end: null
+  model_type: extra_trees
+  method: isotonic
+  bins: 10
+
+scan:
+  leverages: [3.0, 5.0, 10.0]
+  buy_thresholds: [0.55, 0.58, 0.60, 0.62, 0.65]
+  exit_thresholds: [0.45, 0.50, 0.52]
+
+trading:
+  initial_equity: 1000.0
+  direction: long_only       # long_only in v0.2; short support can be added later
+  leverage: 3.0              # default simulation leverage; scan 3, 5, 10 with scripts/run_*_scan.py
+  max_leverage: 10.0
+  max_margin_fraction: 0.30  # margin used per trade, e.g. 30% of equity
+  max_notional_fraction: 3.0 # notional <= equity * max_notional_fraction
+  fee_rate: 0.0005           # one-way fee on notional; adjust to your venue/VIP level
+  slippage_rate: 0.0005      # conservative fixed slippage on notional
+  maintenance_margin_rate: 0.005
+  min_liquidation_buffer: 0.20
+
+risk:
+  stop_loss_atr_multiple: 2.5
+  take_profit_atr_multiple: 4.0
+  enable_trailing_stop: true
+  trailing_stop_atr_multiple: 3.0
+  conservative_same_bar_exit: stop_first  # stop_first is safer for candle-level backtest/paper simulation
+  max_daily_loss_fraction: 0.05
+  max_drawdown_stop_fraction: 0.20
+  pause_after_consecutive_losses: 3
+  pause_bars_after_consecutive_losses: 6
+  max_holding_bars: 12       # 12 * 4h = 48h
+
+pending_orders:
+  max_order_age_bars: 1      # unfilled local limit/stop orders expire after this many bars
+
+
+paper:
+  database_path: data/database/paper_trading.sqlite
+  run_interval_seconds: 14400      # 4h; set shorter only for debugging
+  update_before_step: false        # true means fetch latest public market data each paper step
+  new_candle_only: true            # avoid repeated decisions on the same latest candle
+  export_path: reports/paper_trading
+
+execution:
+  # local_paper executes against the SQLite-backed PaperAccount.
+  # binance_futures_demo converts the same strategy signal to a Binance USD-M futures demo/testnet order.
+  mode: local_paper            # local_paper | binance_futures_demo
+  order_type: market           # market | limit
+  execute_demo_orders: false   # keep false unless using explicit script flags and confirmation phrase
+  log_intents: true
+
+broker:
+  provider: okx
+  environment: demo             # demo | live ; live is blocked by default safety guard
+  api_key_env: OKX_API_KEY
+  secret_env: OKX_API_SECRET
+  passphrase_env: OKX_API_PASSPHRASE
+  safety:
+    default_dry_run: true        # never send orders unless script receives explicit execute flag
+    allow_live_trading: false    # keep false until the system passes long paper/demo validation
+    require_confirmation_phrase: I_UNDERSTAND_TESTNET_ORDER
+    max_order_notional_usdt: 50.0 # hard cap for demo/testnet order experiments
+    max_leverage: 10.0
+
+
+native_protection:
+  # V0.7: native exchange protective-order intent generation for Futures Demo/Testnet.
+  enabled: true
+  working_type: MARK_PRICE          # MARK_PRICE is safer against last-price wicks; venue-specific.
+  position_side: BOTH               # BOTH for one-way mode; LONG/SHORT for hedge mode.
+  enable_stop_loss: true
+  enable_take_profit: true
+  enable_trailing_stop: false       # keep false until SL/TP demo flow is stable.
+  trailing_activation_pct: 0.01      # fallback only when ATR/explicit activation is unavailable.
+  trailing_callback_rate: 1.0        # Binance futures callbackRate is percentage-like; check venue limits before execution.
+  fallback_stop_loss_pct: 0.02       # used only if ATR/local protective levels are unavailable.
+  fallback_take_profit_pct: 0.04
+  cancel_existing_before_replace: false
+  min_protective_order_count: 1
+
+user_stream:
+  # V0.8: Binance USD-M Futures user-data stream helper.
+  # Scripts default to dry-run preview. Real listen-key creation requires testnet API keys and confirmation phrase.
+  enabled: false
+  websocket_base_url: null
+  keepalive_interval_seconds: 1800
+  reconnect_backoff_seconds: 5
+  max_reconnect_attempts: 5
+
+sync:
+  # V0.8: polling/event-based exchange state synchronization and reconciliation.
+  enabled: true
+  poll_interval_seconds: 60
+  require_reconciliation_before_demo_order: true
+  cancel_orphan_protective_orders_after_flat: true
+  halt_on_position_mismatch: true
+  qty_tolerance: 0.00000001
+
+alerts:
+  # V0.9: local/demo alert routing. Console + JSONL are enabled; webhook is disabled by default.
+  console: true
+  jsonl_path: reports/alerts/alerts.jsonl
+  webhook:
+    enabled: false
+    url_env: BTCQ_ALERT_WEBHOOK_URL
+    timeout_seconds: 5
+
+auto_recovery:
+  # V0.9: controlled recovery actions. Disabled by default for execution;
+  # scripts preview actions unless --execute-recovery + confirmation are both supplied.
+  enabled: false
+  allow_execute_actions:
+    - cancel_remaining_protective_orders
+    - verify_flat_then_cancel_open_reduce_only_orders
+  never_auto_market_close: true
+
+supervisor:
+  # V0.9: finite guarded supervisor loop. Keep max_iterations small until validated.
+  enabled: false
+  interval_seconds: 60
+  max_iterations_default: 1
+  execute_recovery_default: false
+
+
+research:
+  # V1.1/V1.2: model and strategy diagnostics.
+  model_diagnostics_path: reports/model_diagnostics
+  strategy_diagnostics_path: reports/strategy_diagnostics
+  leverage_risk_path: reports/leverage_risk
+  research_report_path: reports/research_report/research_report.html
+  calibration_bins: 10
+  top_features: 20
+  rolling_window_bars: 180
+
+deployment:
+  # V1.0: deployment diagnostics and status snapshots.
+  health_report_path: reports/deployment/health_report.json
+  status_report_path: reports/deployment/runtime_status.json
+  runtime_bundle_path: reports/runtime_bundle
+
+logging:
+  log_dir: logs
+  level: INFO
+  max_bytes: 5000000
+  backup_count: 5
+
+service:
+  # V1.0 guarded service runner. Default is finite and conservative.
+  enabled: false
+  mode: demo_supervisor
+  interval_seconds: 60
+  max_iterations_default: 1
+  fetch_private_default: false
+  execute_recovery_default: false
+
+strategy_library:
+  # V1.2: rule-based BTC low-frequency strategy candidates.
+  output_path: reports/strategy_library
+  strategies:
+    - buy_and_hold
+    - ma_trend
+    - donchian_breakout
+    - vol_squeeze_breakout
+    - rsi_mean_reversion
+    - regime_filtered_trend
+
+model_library:
+  # V1.2: sklearn model candidates for the same BTC direction label.
+  # V2.7 keeps this list conservative so the default pipeline works without optional packages.
+  output_path: reports/model_library
+  models:
+    - extra_trees
+    - random_forest
+    - logistic_l2
+    - hist_gradient_boosting
+  thresholds: [0.50, 0.55, 0.58, 0.60, 0.65]
+
+enhanced_model_library:
+  # V2.7: optional model backends. LightGBM/XGBoost are skipped unless installed.
+  output_path: reports/enhanced_model_library
+  include_optional_if_installed: true
+  models:
+    - extra_trees
+    - random_forest
+    - logistic_l2
+    - hist_gradient_boosting
+    - lightgbm
+    - xgboost
+  thresholds: [0.50, 0.55, 0.58, 0.60, 0.65]
+
+walk_forward_calibration_library:
+  # V2.7: compare multiple models under the leak-resistant train -> calibration -> test workflow.
+  output_path: reports/walk_forward_calibration_model_library
+  include_optional_if_installed: true
+  models:
+    - extra_trees
+    - logistic_l2
+    - hist_gradient_boosting
+    - lightgbm
+    - xgboost
+
+model_strategy_matrix:
+  # V1.2: each model is walk-forwarded and converted into the same ML trading rule.
+  output_path: reports/model_strategy_matrix
+  models:
+    - extra_trees
+    - logistic_l2
+    - hist_gradient_boosting
+  trend_filter: true
+
+
+robustness:
+  # V1.3: coarse hyperparameter search and robustness validation.
+  output_path: reports/robustness
+  parameter_search_path: reports/robustness/parameter_search
+  top_candidate_path: reports/robustness/top_candidate
+  ml_threshold_grid_path: reports/robustness/ml_threshold_grid
+  report_path: reports/v1_3_research_report/v1_3_research_report.html
+  n_segments: 6
+  max_candidates_per_strategy: null   # null = run full coarse grid; set small number for fast debugging
+  strategies:
+    - ma_trend
+    - donchian_breakout
+    - vol_squeeze_breakout
+    - rsi_mean_reversion
+    - regime_filtered_trend
+  leverages: [3.0, 5.0, 10.0]
+  fee_multipliers: [1.0, 2.0, 4.0]
+  slippage_multipliers: [1.0, 2.0, 4.0]
+  ml_buy_thresholds: [0.55, 0.58, 0.60, 0.62, 0.65]
+  ml_exit_thresholds: [0.45, 0.48, 0.50, 0.52]
+  ml_trend_filter_values: [true, false]
+  ml_max_holding_bars: [6, 12, 18]
+
+
+ensemble:
+  # V1.4: weighted multi-strategy ensemble selected from V1.3 robustness candidates.
+  output_path: reports/ensemble
+  report_path: reports/v1_4_research_report/v1_4_research_report.html
+  candidate_table_path: reports/robustness/parameter_search/strategy_parameter_search_summary.csv
+  top_n: 5
+  min_trades: 5
+  max_overfit_risk: 80.0
+  vote_threshold: 0.50
+  base_leverage: 3.0
+  max_exposure: 3.0
+  vol_target_annual: 0.45
+  vol_window_bars: 42
+  regime_adjustment: true
+
+
+dynamic_positioning:
+  # V1.4: grid search for volatility-targeted dynamic exposure.
+  output_path: reports/dynamic_positioning
+  base_leverages: [2.0, 3.0, 5.0]
+  max_exposures: [1.5, 2.0, 3.0]
+  vol_targets_annual: [0.30, 0.45, 0.60]
+  vol_windows_bars: [24, 42, 72]
+
+strategy_failure:
+  # V1.4: diagnostic filter for candidate strategy degradation.
+  output_path: reports/strategy_failure
+  lookback_bars: 90
+  min_recent_return: -0.08
+  max_recent_drawdown: -0.12
+
+
+ensemble_paper:
+  # V1.5: bridge V1.4 target_exposure into the local SQLite paper account.
+  enabled: true
+  output_path: reports/ensemble_paper
+  min_rebalance_notional: 25.0       # ignore tiny exposure changes below this USDT notional
+  max_exposure: 3.0                  # local paper hard cap for target_exposure
+  attach_local_protective_levels: true
+  respect_local_protective_exits: true
+  new_candle_only: true
+  mode: local_only                   # V1.5 only supports local paper rebalancing; no live execution.
+
+
+ensemble_demo_execution:
+  # V1.6: convert V1.4/V1.5 target_exposure into Binance Futures Demo/Testnet order intents.
+  enabled: true
+  output_path: reports/ensemble_demo_execution
+  order_type: market
+  leverage: 3.0
+  max_exposure: 3.0
+  min_rebalance_notional: 25.0
+  apply_demo_order_cap: true       # caps each order by broker.safety.max_order_notional_usdt for safe Testnet experiments
+  attach_native_protection: false  # turn on only after basic target-position Demo flow is stable
+  client_order_prefix: btcqv16
+  require_manual_confirmation_for_execute: true
+ensemble_demo_sync:
+  # V1.7: exchange-position synchronized ensemble Demo/Testnet execution gate.
+  enabled: true
+  output_path: reports/ensemble_demo_sync
+  source: exchange_snapshot          # exchange_snapshot | offline_simulated
+  qty_tolerance: 0.00000001
+  require_private_snapshot_before_execute: true
+  halt_if_position_unprotected: true
+  block_if_non_protective_open_orders: true
+  block_on_warnings: false
+  persist_pretrade_checks: true
+
+
+exchange_resilience:
+  # V1.8: exchange error classification, retry policy and idempotent order ledger.
+  enabled: true
+  client_order_prefix: btcqv19
+  idempotency_db_path: data/database/paper_trading.sqlite
+  retry:
+    max_attempts: 3
+    base_delay_seconds: 0.5
+    max_delay_seconds: 8.0
+    jitter_seconds: 0.25
+    sleep_enabled: false       # keep false for dry-run/dev; enable only for real Demo/Testnet service runs
+    retry_categories:
+      - network_error
+      - rate_limited
+      - exchange_not_available
+      - request_timeout
+      - temporary_exchange_error
+      - unknown_order_state
+  unknown_order_state_policy:
+    require_reconciliation_before_resubmit: true
+    block_duplicate_client_order_id: true
+
+order_state_machine:
+  # V1.9: full exchange order lifecycle tracking and partial-fill recovery planning.
+  enabled: true
+  treat_partial_fill_as_critical: true
+  require_position_reconcile_after_partial_fill: true
+  recalc_protection_after_partial_fill: true
+  block_new_entries_when_order_state_unknown: true
+  qty_tolerance: 0.00000001
+  persist_state_transitions: true
+  cancel_failure_policy:
+    block_new_entries_until_resolved: true
+    retry_cancel_if_temporary_error: true
+    require_open_order_reconcile_after_order_not_found: true
+
+shadow_monitor:
+  # V2.1: read-only shadow-live vs local paper/ensemble divergence monitor.
+  output_path: reports/shadow_monitor
+  interval_seconds: 300
+  max_shadow_snapshot_age_minutes: 60
+  max_paper_state_age_minutes: 240
+  max_target_age_minutes: 1440
+  qty_tolerance: 0.00000001
+  equity_tolerance_fraction: 0.05
+  exposure_tolerance_abs: 0.10
+  allow_offline_shadow_snapshot: true
+  block_live_execution_on_shadow_drift: true
+  require_shadow_monitor_before_live: true
+
+live_trading:
+  # V2.0/V2.2: real-money trading remains disabled unless this master switch and broker safety flag are both explicitly changed.
+  master_enable: false
+  manual_confirmation_phrase: I_ACCEPT_LIVE_TRADING_RISK
+  max_live_leverage: 3.0
+  max_live_order_notional_usdt: 50.0
+  hard_circuit_enabled: true
+  max_daily_loss_fraction: 0.02
+  max_total_drawdown_fraction: 0.10
+  kill_switch_path: data/database/KILL_SWITCH.json
+  min_demo_validation_days: 30
+  prelive_validation_report_path: reports/prelive_validation/prelive_validation_report.json
+  live_gate_report_path: reports/live_safety/live_gate_report.json
+  demo_equity_curve_path: reports/ensemble_paper/ensemble_paper_equity_curve.csv
+  required_reports:
+    shadow_monitor: reports/shadow_monitor/shadow_drift_report.json
+    v2_1_readiness: reports/shadow_monitor/v2_1_shadow_readiness_report.json
+    strategy_robustness: reports/v1_3_research_report/v1_3_research_report.html
+    ensemble_report: reports/v1_4_research_report/v1_4_research_report.html
+
+shadow_live:
+  # V2.0/V2.2: only read-only live account inspection is allowed in shadow mode.
+  enabled: false
+  api_key_env: BINANCE_LIVE_READONLY_API_KEY
+  secret_env: BINANCE_LIVE_READONLY_API_SECRET
+  require_readonly_key: true
+  forbid_order_submission: true
+
+prelive_operator_workflow:
+  # V2.2: operator-facing pre-live review workflow. This does not submit live orders.
+  output_path: reports/prelive_operator
+  readiness_report_path: reports/prelive_operator/v2_2_go_live_review_report.json
+  approval_phrase: I_REVIEWED_AND_ACCEPT_PRELIVE_RISK
+  require_all_checklist_items: true
+  require_shadow_monitor_pass: true
+  require_api_permission_audit: true
+  recommended_initial_live_capital_usdt: 100.0
+  maximum_planned_capital_usdt: 1000.0
+  recommended_initial_leverage: 3.0
+  prohibit_default_10x_live: true
+
+
+ui:
+  dashboard_title: BTC Quant Research Console
+  safe_mode: true
+  allow_live_actions: false
+  output_path: reports/ui
+  max_table_rows: 300
+  allowed_button_scripts:
+    - deploy_check.py
+    - status_panel.py
+    - download_ohlcv.py
+    - build_features.py
+    - train_model.py
+    - model_train_smoke.py
+    - model_library_v27_smoke.py
+    - run_model_diagnostics.py
+    - train_calibrated_model.py
+    - run_signal_confidence_report.py
+    - run_calibrated_ml_backtest.py
+    - run_walk_forward_calibration.py
+    - check_model_backends.py
+    - run_enhanced_model_library.py
+    - run_wf_calibration_model_library.py
+    - build_v27_research_report.py
+    - build_v26_research_report.py
+    - run_strategy_library_backtest.py
+    - run_strategy_parameter_search.py
+    - run_ensemble_strategy.py
+    - run_paper_ensemble_diagnostics.py
+    - paper_init.py
+    - paper_ensemble_preview.py
+    - shadow_drift_check.py
+    - prelive_operator_console.py
+    - audit_package.py
+    - run_safe_research_pipeline.py
+    - run_data_quality_check.py
+    - download_funding_rates.py
+    - run_market_realism_report.py
+    - run_purged_embargo_cv.py
+
+    - check_sequence_model_backends.py
+    - run_sequence_model_experiments.py
+    - run_sequence_walk_forward.py
+    - build_v28_sequence_report.py
+
+    - run_model_strategy_admission.py
+    - build_v29_admission_report.py
+    - run_daily_operations_report.py
+    - run_signal_hit_rate_report.py
+    - run_paper_health_check.py
+    - build_v30_operations_report.py
+
+data_quality:
+  # V2.4: strict OHLCV validation before feature/model generation.
+  output_path: reports/data_quality
+  max_abs_log_return: 0.20
+  zscore_threshold: 8.0
+  max_range_pct: 0.35
+  max_zero_volume_fraction: 0.01
+  allow_incomplete_latest_bar: true
+  require_pass_before_training: false
+
+market_realism:
+  # V2.4: funding, liquidation-buffer and realistic-cost reporting.
+  output_path: reports/market_realism
+  funding_path: data/raw/BTCUSDT_funding_rates.parquet
+  preferred_backtest_result: reports/ensemble/ensemble_dynamic_backtest_result.csv
+  include_funding_costs: true
+  include_liquidation_risk: true
+  liquidation_warning_buffer: 0.20
+
+validation:
+  # V2.4: stricter time-series validation. Purge horizon prevents label leakage;
+  # embargo prevents near-neighbor leakage after each test fold.
+  output_path: reports/validation
+  model_type: extra_trees
+  n_splits: 5
+  embargo_bars: 6
+  min_train_bars: 1000
+
+sequence_models:
+  # V2.8: sequence model experiment layer. These models are research-only and
+  # do not feed live execution. The built-in sequence_mlp uses flattened windows;
+  # LSTM/GRU/TCN require optional PyTorch.
+  output_path: reports/sequence_models
+  lookback_bars: 48
+  stride_bars: 1
+  label_col: label_up
+  future_return_col: future_return
+  close_col: close
+  models:
+    - sequence_mlp
+    - lstm
+    - gru
+    - tcn
+  include_torch_if_installed: false
+  torch_epochs: 12
+  torch_batch_size: 128
+  torch_hidden_size: 64
+  torch_device: auto
+  bins: 10
+
+sequence_walk_forward:
+  output_path: reports/sequence_walk_forward
+  lookback_bars: 48
+  stride_bars: 1
+  train_window_days: 1095
+  test_window_days: 90
+  min_train_sequences: 600
+  min_test_sequences: 30
+  start: null
+  end: null
+  models:
+    - sequence_mlp
+  include_torch_if_installed: false
+  torch_epochs: 8
+  torch_batch_size: 128
+  torch_hidden_size: 64
+  torch_device: auto
+  bins: 10
+
+v2_8_report:
+  output_path: reports/v2_8_sequence_research_report
+
+model_admission:
+  # V2.9: unified model/strategy leaderboard and conservative admission gate.
+  # Decisions are for local paper-trading candidate selection only.
+  output_path: reports/model_admission
+  policy:
+    min_auc: 0.52
+    min_calibrated_auc: 0.52
+    max_brier: 0.255
+    max_ece: 0.12
+    min_sharpe: 0.20
+    min_calmar: 0.10
+    max_drawdown_abs: 0.35
+    min_trades: 8
+    min_folds: 3
+    max_overfit_risk_score: 0.65
+    min_segment_positive_rate: 0.45
+    paper_score_threshold: 60.0
+    watch_score_threshold: 42.0
+    reject_score_threshold: 20.0
+
+v2_9_report:
+  output_path: reports/v2_9_admission_report
+
+operations:
+  # V3.0: daily operations layer for long-running paper/demo validation.
+  # No live orders are submitted by these reports.
+  output_path: reports/operations
+  paper_db_path: data/database/paper_trading.sqlite
+  admission_leaderboard_path: reports/model_admission/model_strategy_leaderboard.csv
+  admission_snapshot_path: reports/operations/admission_snapshots.csv
+  confidence_dataset_path: reports/walk_forward_calibration/walk_forward_confidence_dataset.csv
+  fallback_confidence_dataset_path: reports/walk_forward_calibration_smoke/walk_forward_confidence_dataset.csv
+  strategy_failure_path: reports/strategy_failure/strategy_failure_status.csv
+  lookback_bars: 180
+  hit_rate_window_bars: 60
+  max_table_rows: 80
+
+v3_0_report:
+  output_path: reports/v3_0_operations_report

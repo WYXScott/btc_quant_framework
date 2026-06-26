@@ -1,0 +1,11 @@
+# Optional model backends for V2.7.
+# The core project works without these packages.
+# Install only after the base environment is working:
+#   pip install -r requirements-optional.txt
+lightgbm>=4.3.0
+xgboost>=2.0.0
+
+# Optional V2.8 deep sequence models. Install the CUDA wheel that matches your system.
+# Example for CUDA 12.1:
+# pip install torch --index-url https://download.pytorch.org/whl/cu121
+torch

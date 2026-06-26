@@ -1,0 +1,3 @@
+# Optional dependencies for V2.8 LSTM / GRU / TCN sequence experiments.
+# For RTX 4090 on Windows/Linux, install the CUDA wheel recommended by PyTorch.
+torch

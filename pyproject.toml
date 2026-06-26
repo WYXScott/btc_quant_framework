@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "btc-quant-framework"
+version = "2.7.0"
+description = "Low-frequency BTC leveraged quant research framework with data quality, market realism, walk-forward probability calibration and safety layers"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]
