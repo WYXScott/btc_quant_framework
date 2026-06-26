@@ -194,6 +194,12 @@ This keeps GitHub lightweight and avoids publishing local data, credentials, or 
 
 ## Key Docs
 
+- [Documentation index](docs/INDEX.md)
+- [System architecture](docs/SYSTEM_ARCHITECTURE.md)
+- [Operating model](docs/OPERATING_MODEL.md)
+- [Extension interfaces](docs/EXTENSION_INTERFACES.md)
+- [Data and artifacts](docs/DATA_AND_ARTIFACTS.md)
+- [Roadmap](docs/ROADMAP.md)
 - [OKX realtime market data](docs/OKX_REALTIME_MARKET_DATA.md)
 - [OKX data access](docs/OKX_DATA_ACCESS.md)
 - [Data quality and market realism](docs/DATA_QUALITY_MARKET_REALISM.md)

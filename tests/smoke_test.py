@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
+
+os.environ.setdefault("MPLBACKEND", "Agg")
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -116,6 +119,73 @@ def test_realtime_klines() -> None:
     assert len(merged) == 2
     assert abs(float(merged["close"].iloc[-1]) - 60169.0) < 1e-12
     assert merged_path.exists()
+
+
+def test_interface_contracts() -> None:
+    from crypto_quant.interfaces import (
+        ExecutionReport,
+        MarketCandle,
+        PortfolioState,
+        RiskCheckResult,
+        StrategySignal,
+    )
+    from crypto_quant.interfaces.contracts import signal_to_strategy_decision
+
+    candle = MarketCandle(
+        exchange="okx",
+        symbol="BTC-USDT-SWAP",
+        timeframe="4h",
+        timestamp="2026-06-26T00:00:00+00:00",
+        open=60000.0,
+        high=60100.0,
+        low=59900.0,
+        close=60050.0,
+        volume=12.0,
+    )
+    assert candle.to_dict()["exchange"] == "okx"
+
+    portfolio = PortfolioState(
+        timestamp="2026-06-26T00:00:00+00:00",
+        equity=1000.0,
+        cash=1000.0,
+        position_qty=0.0,
+        leverage=3.0,
+    )
+    assert portfolio.in_position is False
+
+    signal = StrategySignal(
+        timestamp=candle.timestamp,
+        symbol=candle.symbol,
+        direction=1,
+        target_exposure=1.5,
+        confidence=0.62,
+        probability_up=0.61,
+        reason="interface_smoke",
+        strategy_name="smoke_strategy",
+    )
+    decision = signal_to_strategy_decision(
+        signal=signal,
+        portfolio=portfolio,
+        price=candle.close,
+        leverage=3.0,
+        margin_fraction=0.30,
+        risk_allowed=True,
+    )
+    assert decision.action == "buy"
+    assert decision.requires_order
+    assert decision.metadata["strategy_name"] == "smoke_strategy"
+
+    risk = RiskCheckResult(allowed=True, reason="ok")
+    assert risk.to_dict()["allowed"] is True
+
+    report = ExecutionReport(
+        timestamp=candle.timestamp,
+        mode="local_paper",
+        status="preview",
+        dry_run=True,
+        message="interface_smoke",
+    )
+    assert report.to_dict()["status"] == "preview"
 
 
 def test_smoke() -> None:
@@ -1064,5 +1134,6 @@ def test_smoke() -> None:
 
 if __name__ == "__main__":
     test_realtime_klines()
+    test_interface_contracts()
     test_smoke()
     print("smoke_test passed")
