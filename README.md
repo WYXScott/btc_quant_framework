@@ -1,65 +1,110 @@
-# BTC Quant Framework V2.8
+# BTC Quant Framework
 
-这是一个面向 **BTC/USDT 低频杠杆交易研究、回测、模拟盘与只读影子监控** 的 Python 工程框架。
+A safety-first Python framework for BTC/USDT perpetual-swap quantitative research, walk-forward validation, local paper trading, operations reporting, and OKX public market-data ingestion.
 
-V2.8 的重点是：**序列模型实验层**。它在 V2.7 的模型库增强基础上，新增固定窗口序列数据构造、sequence_mlp 基线、可选 PyTorch LSTM/GRU/TCN，以及序列模型 walk-forward 对比。
+当前版本：**V3.0.5**
 
-> 当前版本不开放实盘自动交易。真实账户相关功能仅限只读影子检查、安全总闸、Kill Switch 和人工审核流程。
+> This project is for research, backtesting, local paper trading, and read-only safety monitoring. It does not enable real-money automated trading by default.
 
----
+## Overview
 
-## 1. 快速启动
+BTC Quant Framework 是一套面向 **BTC/USDT 永续合约低频量化研究** 的工程化框架。它把数据下载、数据质量检查、特征工程、模型训练、概率校准、策略回测、组合策略、SQLite 本地模拟盘、运营日报、只读影子监控和 Streamlit 前端控制台放在一个可迭代的项目里。
+
+V3.0.5 的主线是 **OKX 实时行情落库**：
+
+- OKX WebSocket `candle1m` / `candle4H` 接入
+- 实时 K 线写入 SQLite `realtime_klines`
+- 连接状态写入 `realtime_status`
+- 前端展示 OKX 最新价格、连接状态和最近 K 线
+- 已确认的 `candle4H` 可合并回历史 4H parquet 数据
+
+## Features
+
+- **OKX public market data**: native REST historical candles and WebSocket realtime candles.
+- **Data quality**: OHLCV validation, missing/duplicate timestamp checks, extreme move warnings, and non-finite feature checks.
+- **Feature engineering**: returns, moving averages, volatility, ATR-style features, volume features, candle structure, RSI.
+- **Model research**: ExtraTrees, RandomForest, Logistic Regression, HistGradientBoosting, optional LightGBM/XGBoost, and sequence-model experiments.
+- **Validation**: fixed split, walk-forward prediction, walk-forward probability calibration, purged/embargo CV.
+- **Backtesting**: leveraged long-only research engine, dynamic target-exposure engine, fee/slippage assumptions, drawdown metrics.
+- **Strategy library**: trend, breakout, mean-reversion, volatility compression, model-driven, and ensemble strategies.
+- **Local paper trading**: SQLite-backed account, orders, decisions, equity curve, target-exposure replay.
+- **Operations layer**: daily paper-health reports, signal hit-rate reports, admission snapshots, operational alerts.
+- **Safety layer**: dry-run defaults, live gate, kill switch, hard circuit breaker, read-only shadow mode, manual pre-live workflow.
+- **Frontend**: Streamlit research console for data, models, reports, paper trading, realtime data, and safety checks.
+
+## Architecture
+
+```text
+config/config.yaml
+        |
+        v
+scripts/                     CLI entrypoints
+        |
+        v
+src/crypto_quant/
+  data/                      REST downloaders, realtime WebSocket storage, parquet utilities
+  features/                  feature generation and labels
+  models/                    training, prediction, calibration, walk-forward
+  strategy/                  rule and ML signals
+  backtest/                  fixed and dynamic exposure engines
+  research/                  diagnostics, model libraries, robustness, ensembles
+  paper/                     SQLite-backed local paper trading
+  exchange/                  demo/testnet intent, safety, reconciliation, order lifecycle
+  live/                      live safety gate, kill switch, read-only shadow workflows
+  ops/                       daily operations reports
+  ui/                        Streamlit helper layer
+frontend/app.py              Streamlit console
+```
+
+## Quick Start
 
 ```bash
-cd btc_quant_framework_v2_8
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 python scripts/run_dashboard.py
 ```
 
-也可以直接运行：
+Open:
 
-```bash
-streamlit run frontend/app.py
+```text
+http://localhost:8501
 ```
 
----
+The dashboard is the easiest way to inspect data, run safe scripts, view reports, and monitor realtime OKX candles.
 
-## 2. 可选模型后端
+## OKX Market Data
 
-核心环境不需要 LightGBM/XGBoost。需要时再安装：
-
-```bash
-pip install -r requirements-optional.txt
-python scripts/check_model_backends.py
-```
-
-未安装可选包时，相关模型会被跳过，不影响默认研究流程。
-
----
-
-
-## 2.1 序列模型实验
-
-默认不需要 PyTorch，仅运行内置 `sequence_mlp`：
+Download/update historical 4H BTC-USDT-SWAP candles:
 
 ```bash
-python scripts/check_sequence_model_backends.py
-python scripts/run_sequence_model_experiments.py
-python scripts/run_sequence_walk_forward.py
-python scripts/build_v28_sequence_report.py
+python scripts/download_okx_ohlcv.py
 ```
 
-如果要实验 LSTM / GRU / TCN，再安装可选依赖：
+Sample realtime WebSocket candles and persist them to SQLite:
 
 ```bash
-pip install -r requirements-sequence.txt
+python scripts/run_okx_realtime_listener.py --max-messages 5
+python scripts/run_realtime_status.py
 ```
 
-序列模型结果仅用于研究报告，不直接接入模拟盘或实盘执行。
+Run the realtime listener continuously:
 
-## 3. 推荐研究流程
+```bash
+python scripts/run_okx_realtime_listener.py
+```
+
+Merge confirmed realtime `candle4H` rows into the historical 4H parquet dataset:
+
+```bash
+python scripts/merge_realtime_ohlcv.py
+```
+
+More details: [docs/OKX_REALTIME_MARKET_DATA.md](docs/OKX_REALTIME_MARKET_DATA.md)
+
+## Research Pipeline
+
+Recommended baseline flow:
 
 ```bash
 python scripts/download_ohlcv.py
@@ -71,68 +116,26 @@ python scripts/train_calibrated_model.py
 python scripts/run_signal_confidence_report.py
 python scripts/run_calibrated_ml_backtest.py
 python scripts/run_walk_forward_calibration.py
-python scripts/check_model_backends.py
-python scripts/run_enhanced_model_library.py
-python scripts/run_wf_calibration_model_library.py
-python scripts/build_v27_research_report.py
-python scripts/check_sequence_model_backends.py
-python scripts/run_sequence_model_experiments.py
-python scripts/run_sequence_walk_forward.py
-python scripts/build_v28_sequence_report.py
-python scripts/run_purged_embargo_cv.py
 python scripts/run_strategy_parameter_search.py
 python scripts/run_ensemble_strategy.py
-python scripts/audit_package.py
 ```
 
-也可以：
+One-shot safe pipeline:
 
 ```bash
 python scripts/run_safe_research_pipeline.py --include-download
 ```
 
----
+## Paper Trading And Operations
 
-## 4. 关键报告
-
-```text
-reports/model_backends/model_backend_availability.csv
-reports/enhanced_model_library/enhanced_model_library_report.html
-reports/walk_forward_calibration_model_library/walk_forward_calibration_model_library_report.html
-reports/v2_7_research_report/v2_7_research_report.html
-```
-
----
-
-## 5. 安全边界
-
-- 不开放真实自动下单。
-- 前端没有实盘下单按钮。
-- Demo/Testnet 相关执行仍默认 dry-run。
-- Live Gate 默认阻断真实交易。
-
-## V2.9 统一模型排行榜与策略准入
-
-V2.9 新增统一模型/策略准入层，用于汇总表格模型、可选 LightGBM/XGBoost、walk-forward 校准模型、序列模型、规则策略和组合策略，并输出：
+Initialize and replay local paper trading:
 
 ```bash
-python scripts/run_model_strategy_admission.py
-python scripts/build_v29_admission_report.py
+python scripts/paper_init.py --reset
+python scripts/paper_ensemble_replay_dataset.py --bars 300 --reset
 ```
 
-主要报告：
-
-```text
-reports/model_admission/model_strategy_leaderboard.csv
-reports/model_admission/model_strategy_admission_report.html
-reports/v2_9_admission_report/v2_9_admission_report.html
-```
-
-准入等级只用于本地模拟盘候选筛选，不开放实盘自动交易。
-
-## V3.0 模拟盘长期运行与自动研究日报
-
-V3.0 新增运营日报层，用于长期模拟盘和研究运维：
+Generate operations reports:
 
 ```bash
 python scripts/run_paper_health_check.py
@@ -141,17 +144,82 @@ python scripts/run_daily_operations_report.py
 python scripts/build_v30_operations_report.py
 ```
 
-主要报告：
+## Optional Model Backends
 
-```text
-reports/operations/daily_operations_report.html
-reports/v3_0_operations_report/v3_0_operations_report.html
-```
+The default environment does not require LightGBM, XGBoost, or PyTorch.
 
-前端新增 **运营日报** 页面：
+Optional tabular backends:
 
 ```bash
-python scripts/run_dashboard.py
+pip install -r requirements-optional.txt
+python scripts/check_model_backends.py
 ```
 
-该版本仍然不开放真实自动交易。
+Optional sequence-model experiments:
+
+```bash
+pip install -r requirements-sequence.txt
+python scripts/check_sequence_model_backends.py
+python scripts/run_sequence_model_experiments.py
+python scripts/run_sequence_walk_forward.py
+```
+
+Sequence-model outputs are research-only and are not wired directly into execution.
+
+## Repository Hygiene
+
+The repository tracks source code, docs, configs, templates, scripts, tests, and `.gitkeep` placeholders.
+
+The following local/runtime artifacts are intentionally ignored:
+
+- `.venv/`
+- real `.env` files and private keys
+- raw and processed market data
+- SQLite databases
+- trained `.joblib` models
+- generated reports
+- logs
+- Python caches
+
+This keeps GitHub lightweight and avoids publishing local data, credentials, or model artifacts.
+
+## Safety Boundaries
+
+- Real-money automated trading is disabled by default.
+- Streamlit does not expose live order buttons.
+- Demo/testnet execution paths default to dry-run unless explicit flags and confirmation phrases are provided.
+- Live gate blocks real trading unless multiple config switches and manual workflows are changed.
+- Read-only shadow mode is separated from order submission.
+- Public market-data ingestion does not require API keys.
+
+## Key Docs
+
+- [OKX realtime market data](docs/OKX_REALTIME_MARKET_DATA.md)
+- [OKX data access](docs/OKX_DATA_ACCESS.md)
+- [Data quality and market realism](docs/DATA_QUALITY_MARKET_REALISM.md)
+- [Walk-forward calibration](docs/WALK_FORWARD_CALIBRATION.md)
+- [Model strategy admission](docs/MODEL_STRATEGY_ADMISSION.md)
+- [Operations daily reports](docs/OPERATIONS_DAILY_REPORTS.md)
+- [Safety checklist](docs/SAFETY_CHECKLIST.md)
+
+## Version Notes
+
+- **V3.0.5**: OKX realtime WebSocket candle persistence, realtime Streamlit page, confirmed 4H merge path.
+- **V3.0**: long-running paper-trading operations layer and daily reports.
+- **V2.9**: unified model/strategy leaderboard and admission layer.
+- **V2.8**: sequence-model experiment layer.
+- **V2.7**: enhanced model library and optional backend handling.
+
+See [RELEASE_NOTES_V3_0_5.md](RELEASE_NOTES_V3_0_5.md) and the older release-note files for details.
+
+## Roadmap
+
+- Harden OKX realtime reconnect and proxy diagnostics.
+- Add background service wrappers for realtime ingestion.
+- Add realtime-to-paper signal handoff after sufficient monitoring.
+- Improve model performance beyond observation/watchlist status.
+- Add richer dashboard status cards for data freshness and pipeline health.
+
+## Disclaimer
+
+This repository is for engineering research and educational experimentation. It is not financial advice and does not guarantee trading performance. Use real-money trading only after independent review, long paper validation, and explicit safety configuration.

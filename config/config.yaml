@@ -1,6 +1,6 @@
 project:
   name: btc_quant_framework
-  version: 3.0.4
+  version: 3.0.5
   timezone: UTC
 
 exchange:
@@ -44,6 +44,28 @@ download:
   prefer_base_volume: true
   use_env_proxy: true
   rate_limit: true
+
+realtime:
+  # V3.0.5: OKX public WebSocket candles persisted to local SQLite.
+  # candle1m is used for realtime monitoring; confirmed candle4H can be merged
+  # back into the historical 4h research dataset.
+  enabled: true
+  exchange: okx
+  inst_id: BTC-USDT-SWAP
+  database_path: data/database/realtime_market.sqlite
+  ws_url: wss://ws.okx.com:8443/ws/v5/business
+  channels:
+    - candle1m
+    - candle4H
+  status_component: okx_realtime_ws
+  use_env_proxy: true
+  prefer_base_volume: true
+  max_reconnects: 3
+  reconnect_sleep_seconds: 3
+  auto_merge_history: true
+  merge_channel: candle4H
+  merge_output_path: data/raw/OKX_BTC_USDT_SWAP_4h.parquet
+  confirmed_only_merge: true
 
 
 features:
@@ -509,6 +531,9 @@ ui:
     - deploy_check.py
     - status_panel.py
     - download_ohlcv.py
+    - run_okx_realtime_listener.py
+    - run_realtime_status.py
+    - merge_realtime_ohlcv.py
     - build_features.py
     - train_model.py
     - model_train_smoke.py

@@ -54,6 +54,70 @@ def make_ml_dataset(periods: int = 180) -> pd.DataFrame:
     }, index=idx)
 
 
+def test_realtime_klines() -> None:
+    from crypto_quant.data.realtime import (
+        RealtimeKlineStore,
+        merge_realtime_ohlcv_file,
+        parse_okx_candle_message,
+    )
+    from crypto_quant.data.storage import save_parquet
+
+    db_path = ROOT / "data" / "database" / "smoke_realtime.sqlite"
+    hist_path = ROOT / "data" / "raw" / "smoke_realtime_history.parquet"
+    merged_path = ROOT / "data" / "raw" / "smoke_realtime_merged.parquet"
+    for path in [db_path, hist_path, merged_path]:
+        if path.exists():
+            path.unlink()
+
+    raw_msg = {
+        "arg": {"channel": "candle4H", "instId": "BTC-USDT-SWAP"},
+        "data": [["1782491940000", "60172.5", "60180.0", "60168.0", "60169.0", "10", "0.21", "12635.49", "1"]],
+    }
+    klines = parse_okx_candle_message(raw_msg, received_at="2026-06-26T00:00:00+00:00")
+    assert len(klines) == 1
+    assert klines[0].timeframe == "4h"
+    assert klines[0].confirm is True
+    assert abs(klines[0].volume - 0.21) < 1e-12
+
+    store = RealtimeKlineStore(db_path)
+    assert store.upsert_klines(klines) == 1
+    store.update_status(
+        status="receiving",
+        inst_id="BTC-USDT-SWAP",
+        channels=["candle4H"],
+        last_message_at="2026-06-26T00:00:00+00:00",
+        last_kline_at="2026-06-26T00:00:00+00:00",
+        message_count=1,
+        kline_count=1,
+    )
+    assert store.latest_status()["status"] == "receiving"
+    latest = store.latest_klines(inst_id="BTC-USDT-SWAP", channel="candle4H")
+    assert len(latest) == 1
+    assert int(latest["confirm"].iloc[0]) == 1
+
+    hist = pd.DataFrame(
+        {
+            "open": [60000.0],
+            "high": [60100.0],
+            "low": [59900.0],
+            "close": [60050.0],
+            "volume": [1.0],
+        },
+        index=pd.to_datetime(["2026-06-25T20:00:00Z"], utc=True),
+    )
+    save_parquet(hist, hist_path)
+    merged = merge_realtime_ohlcv_file(
+        historical_path=hist_path,
+        db_path=db_path,
+        inst_id="BTC-USDT-SWAP",
+        channel="candle4H",
+        output_path=merged_path,
+    )
+    assert len(merged) == 2
+    assert abs(float(merged["close"].iloc[-1]) - 60169.0) < 1e-12
+    assert merged_path.exists()
+
+
 def test_smoke() -> None:
     df = make_sample_ohlcv()
     feat = build_features(df, windows=[3, 6, 12, 24, 48, 120])
@@ -999,5 +1063,6 @@ def test_smoke() -> None:
 
 
 if __name__ == "__main__":
+    test_realtime_klines()
     test_smoke()
     print("smoke_test passed")

@@ -59,6 +59,7 @@ page = st.sidebar.radio(
     [
         "总览",
         "数据与模型",
+        "实时行情",
         "数据质量与真实性",
         "概率校准与信号可信度",
         "Walk-forward校准",
@@ -160,6 +161,65 @@ elif page == "数据与模型":
     with col3:
         run_button("3. 训练方向模型", "train_model.py")
     run_button("运行模型诊断", "run_model_diagnostics.py")
+
+
+elif page == "实时行情":
+    st.title("OKX 实时行情")
+    realtime_cfg = cfg.get("realtime", {})
+    inst_id = realtime_cfg.get("inst_id") or cfg.get("symbol", {}).get("okx_inst_id", "BTC-USDT-SWAP")
+    channels = realtime_cfg.get("channels", ["candle1m", "candle4H"]) or ["candle1m"]
+    db_path = resolve_path(realtime_cfg.get("database_path", "data/database/realtime_market.sqlite"))
+
+    st.markdown("### 实时数据库")
+    st.write(str(db_path))
+    counts = sqlite_table_counts(db_path)
+    if counts.empty:
+        st.warning("实时行情数据库尚未初始化。")
+    else:
+        st.dataframe(counts, use_container_width=True, hide_index=True)
+
+    st.markdown("### 连接状态")
+    status_df = latest_sqlite_table(db_path, "realtime_status", limit=20, order_by="updated_at")
+    if status_df.empty:
+        st.info("尚未记录 WebSocket 状态。")
+    else:
+        st.dataframe(status_df, use_container_width=True, hide_index=True)
+
+    st.markdown("### 最新K线")
+    channel = st.selectbox("频道", channels, index=0)
+    latest = latest_sqlite_table(db_path, "realtime_klines", limit=int(cfg.get("ui", {}).get("max_table_rows", 300)), order_by="timestamp")
+    if not latest.empty:
+        latest = latest[(latest["inst_id"] == inst_id) & (latest["channel"] == channel)]
+    if latest.empty:
+        st.warning("尚未写入实时K线。")
+    else:
+        latest_sorted = latest.copy()
+        latest_sorted["timestamp"] = pd.to_datetime(latest_sorted["timestamp"], errors="coerce", utc=True)
+        latest_sorted = latest_sorted.sort_values("timestamp")
+        row = latest_sorted.iloc[-1]
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("最新价格", f"{float(row['close']):,.2f}")
+        c2.metric("频道", str(row["channel"]))
+        c3.metric("确认", "是" if int(row.get("confirm", 0)) else "否")
+        c4.metric("记录数", len(latest_sorted))
+        if "close" in latest_sorted.columns:
+            st.line_chart(latest_sorted.set_index("timestamp")[["close"]])
+        display_cols = [
+            c for c in [
+                "timestamp", "inst_id", "channel", "open", "high", "low", "close",
+                "volume", "confirm", "received_at", "updated_at",
+            ] if c in latest_sorted.columns
+        ]
+        st.dataframe(latest_sorted[display_cols].tail(100), use_container_width=True, hide_index=True)
+
+    st.markdown("### 安全运行按钮")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        run_button("采样实时行情", "run_okx_realtime_listener.py", ["--max-messages", "5"], help_text="采样接收少量公开行情消息后自动停止。")
+    with c2:
+        run_button("查看实时状态", "run_realtime_status.py")
+    with c3:
+        run_button("合并4H实时K线", "merge_realtime_ohlcv.py", help_text="仅合并已确认的4H K线。")
 
 
 elif page == "数据质量与真实性":

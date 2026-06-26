@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "btc-quant-framework"
-version = "2.7.0"
+version = "3.0.5"
 description = "Low-frequency BTC leveraged quant research framework with data quality, market realism, walk-forward probability calibration and safety layers"
 requires-python = ">=3.10"
 

@@ -101,7 +101,7 @@ def sqlite_table_counts(db_path: str | Path) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def latest_sqlite_table(db_path: str | Path, table: str, limit: int = 100) -> pd.DataFrame:
+def latest_sqlite_table(db_path: str | Path, table: str, limit: int = 100, order_by: str | None = None) -> pd.DataFrame:
     p = Path(db_path)
     if not p.is_absolute():
         p = project_root() / p
@@ -109,7 +109,19 @@ def latest_sqlite_table(db_path: str | Path, table: str, limit: int = 100) -> pd
         return pd.DataFrame()
     try:
         with sqlite3.connect(p) as conn:
-            return pd.read_sql_query(f'SELECT * FROM "{table}" LIMIT {int(limit)}', conn)
+            cols = pd.read_sql_query(f'PRAGMA table_info("{table}")', conn)
+            if cols.empty:
+                return pd.DataFrame()
+            col_names = set(cols["name"].tolist())
+            if order_by is not None and order_by in col_names:
+                order_clause = f' ORDER BY "{order_by}" DESC'
+            elif "timestamp" in col_names:
+                order_clause = ' ORDER BY "timestamp" DESC'
+            elif "id" in col_names:
+                order_clause = ' ORDER BY "id" DESC'
+            else:
+                order_clause = ""
+            return pd.read_sql_query(f'SELECT * FROM "{table}"{order_clause} LIMIT {int(limit)}', conn)
     except Exception:
         return pd.DataFrame()
 
@@ -125,6 +137,7 @@ def collect_core_status(cfg: dict[str, Any]) -> pd.DataFrame:
         "reports/calibration/calibration_metrics.json",
         "reports/signal_confidence/confidence_tier_table.csv",
         cfg.get("paper", {}).get("database_path", "data/database/paper_trading.sqlite"),
+        cfg.get("realtime", {}).get("database_path", "data/database/realtime_market.sqlite"),
         cfg.get("deployment", {}).get("health_report_path", "reports/deployment/health_report.json"),
         cfg.get("deployment", {}).get("status_report_path", "reports/deployment/runtime_status.json"),
         cfg.get("research", {}).get("research_report_path", "reports/research_report/research_report.html"),
