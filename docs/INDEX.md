@@ -1,72 +1,93 @@
 # Documentation Index
 
-This directory is the working manual for BTC Quant Framework. It is organized by system layer rather than by release version.
+This directory is the working manual for BTC Quant Framework. Root-level documentation is intentionally kept small: `README.md` is the GitHub entrypoint, and deeper manuals live under the folders below.
 
-## System Foundation
+## Start Here
 
-- [System Architecture](SYSTEM_ARCHITECTURE.md)
-- [Operating Model](OPERATING_MODEL.md)
-- [Extension Interfaces](EXTENSION_INTERFACES.md)
-- [Data And Artifacts](DATA_AND_ARTIFACTS.md)
-- [Roadmap](ROADMAP.md)
-- [Local Python Environment](LOCAL_ENVIRONMENT.md)
-- [Windows Startup Troubleshooting](WINDOWS_STARTUP_TROUBLESHOOTING.md)
-- [UI Navigation And Model Training](UI_NAVIGATION_AND_MODEL_TRAINING.md)
-- [OKX-First Configuration](OKX_FIRST_CONFIGURATION.md)
+- [Local Python environment](setup/LOCAL_ENVIRONMENT.md)
+- [Windows startup troubleshooting](setup/WINDOWS_STARTUP_TROUBLESHOOTING.md)
+- [UI navigation and model training](ui/UI_NAVIGATION_AND_MODEL_TRAINING.md)
+- [Current limitations and next steps](project/CURRENT_LIMITATIONS_AND_NEXT_STEPS.md)
 
-## Market Data
+## Project Foundation
 
-- [OKX Data Access](OKX_DATA_ACCESS.md)
-- [OKX Realtime Market Data](OKX_REALTIME_MARKET_DATA.md)
+- [System architecture](project/SYSTEM_ARCHITECTURE.md)
+- [Operating model](project/OPERATING_MODEL.md)
+- [Extension interfaces](project/EXTENSION_INTERFACES.md)
+- [Data and artifacts](project/DATA_AND_ARTIFACTS.md)
+- [Roadmap](project/ROADMAP.md)
+- [Software review and UI](project/SOFTWARE_REVIEW_AND_UI.md)
+- [GitHub repository profile](project/GITHUB_REPOSITORY_PROFILE.md)
+
+## Data
+
+- [OKX-first configuration](data/OKX_FIRST_CONFIGURATION.md)
+- [OKX data access](data/OKX_DATA_ACCESS.md)
+- [OKX realtime market data](data/OKX_REALTIME_MARKET_DATA.md)
+- [Data quality and market realism](data/DATA_QUALITY_MARKET_REALISM.md)
+- [Binance data access](data/BINANCE_DATA_ACCESS.md)
+- [Binance restricted-location workaround](data/BINANCE_RESTRICTED_LOCATION_WORKAROUND.md)
 
 ## Research And Validation
 
-- [Data Quality And Market Realism](DATA_QUALITY_MARKET_REALISM.md)
-- [Research Diagnostics](RESEARCH_DIAGNOSTICS.md)
-- [Probability Calibration Confidence](PROBABILITY_CALIBRATION_CONFIDENCE.md)
-- [Walk Forward Calibration](WALK_FORWARD_CALIBRATION.md)
-- [Strategy Model Library](STRATEGY_MODEL_LIBRARY.md)
-- [Model Library Optional Backends](MODEL_LIBRARY_OPTIONAL_BACKENDS.md)
-- [Sequence Model Experiments](SEQUENCE_MODEL_EXPERIMENTS.md)
-- [Model Strategy Admission](MODEL_STRATEGY_ADMISSION.md)
+- [Research diagnostics](research/RESEARCH_DIAGNOSTICS.md)
+- [Strategy and model library](research/STRATEGY_MODEL_LIBRARY.md)
+- [Model library optional backends](research/MODEL_LIBRARY_OPTIONAL_BACKENDS.md)
+- [Probability calibration and confidence](research/PROBABILITY_CALIBRATION_CONFIDENCE.md)
+- [Walk-forward calibration](research/WALK_FORWARD_CALIBRATION.md)
+- [Sequence model experiments](research/SEQUENCE_MODEL_EXPERIMENTS.md)
+- [Model strategy admission](research/MODEL_STRATEGY_ADMISSION.md)
+- [V1.3 robustness](research/V1_3_ROBUSTNESS.md)
 
 ## Paper Trading And Operations
 
-- [Ensemble Dynamic Positioning](ENSEMBLE_DYNAMIC_POSITIONING.md)
-- [Ensemble Paper Trading](ENSEMBLE_PAPER_TRADING.md)
-- [Operations Daily Reports](OPERATIONS_DAILY_REPORTS.md)
-- [Service Operations](SERVICE_OPERATIONS.md)
-- [Deployment Demo](DEPLOYMENT_DEMO.md)
+- [Ensemble dynamic positioning](operations/ENSEMBLE_DYNAMIC_POSITIONING.md)
+- [Ensemble paper trading](operations/ENSEMBLE_PAPER_TRADING.md)
+- [Operations daily reports](operations/OPERATIONS_DAILY_REPORTS.md)
+- [Service operations](operations/SERVICE_OPERATIONS.md)
 
-## Execution And Safety
+## Execution
 
-- [Ensemble Demo Execution](ENSEMBLE_DEMO_EXECUTION.md)
-- [Ensemble Synced Demo Execution](ENSEMBLE_SYNCED_DEMO_EXECUTION.md)
-- [Exchange Resilience](EXCHANGE_RESILIENCE.md)
-- [Order State Machine](ORDER_STATE_MACHINE.md)
-- [Live Safety Shadow Mode](LIVE_SAFETY_SHADOW_MODE.md)
-- [Shadow Monitoring](SHADOW_MONITORING.md)
-- [Prelive Operator Workflow](PRELIVE_OPERATOR_WORKFLOW.md)
-- [Safety Checklist](SAFETY_CHECKLIST.md)
+- [Deployment demo](execution/DEPLOYMENT_DEMO.md)
+- [Ensemble demo execution](execution/ENSEMBLE_DEMO_EXECUTION.md)
+- [Ensemble synced demo execution](execution/ENSEMBLE_SYNCED_DEMO_EXECUTION.md)
+- [Exchange resilience](execution/EXCHANGE_RESILIENCE.md)
+- [Order state machine](execution/ORDER_STATE_MACHINE.md)
 
-## Repository Metadata
+## Safety
 
-- [GitHub Repository Profile](GITHUB_REPOSITORY_PROFILE.md)
-- [V3.2.1 Version Status And OKX-First Cleanup](VERSION_STATUS_V3_2_1.md)
-- [V3.2.0 Version Status And Frontend UX Refactor](VERSION_STATUS_V3_2_0.md)
-- [V3.1.2 Version Status And Windows Startup Reliability](VERSION_STATUS_V3_1_2.md)
-- [V3.1.1 Version Status And Local Runtime](VERSION_STATUS_V3_1_1.md)
-- [V3.1.0 Version Status And Service Console](VERSION_STATUS_V3_1_0.md)
-- [V3.0.8 Version Status And Next Steps](VERSION_STATUS_V3_0_8.md)
+- [Safety checklist](safety/SAFETY_CHECKLIST.md)
+- [Live safety and shadow mode](safety/LIVE_SAFETY_SHADOW_MODE.md)
+- [Shadow monitoring](safety/SHADOW_MONITORING.md)
+- [Pre-live operator workflow](safety/PRELIVE_OPERATOR_WORKFLOW.md)
 
-## Release Notes
+## Releases
 
-- [V3.2.1 OKX-First Cleanup And Dashboard Noise Reduction](../RELEASE_NOTES_V3_2_1.md)
-- [V3.2.0 Frontend UX And Model Training Wizard](../RELEASE_NOTES_V3_2_0.md)
-- [V3.1.2 Windows Startup Reliability](../RELEASE_NOTES_V3_1_2.md)
-- [V3.1.1 Local Runtime And Venv Reliability](../RELEASE_NOTES_V3_1_1.md)
-- [V3.1.0 Managed Local Services](../RELEASE_NOTES_V3_1_0.md)
-- [V3.0.8 Stability Closure](../RELEASE_NOTES_V3_0_8.md)
-- [V3.0.7 Realtime Recovery And WebUI Health](../RELEASE_NOTES_V3_0_7.md)
-- [V3.0.6 WebUI Workflow Center](../RELEASE_NOTES_V3_0_6.md)
-- [V3.0.5 OKX Realtime Market Data](../RELEASE_NOTES_V3_0_5.md)
+- [V3.2.1 release notes](releases/RELEASE_NOTES_V3_2_1.md)
+- [V3.2.1 version status](releases/VERSION_STATUS_V3_2_1.md)
+- [V3.2.0 release notes](releases/RELEASE_NOTES_V3_2_0.md)
+- [V3.2.0 version status](releases/VERSION_STATUS_V3_2_0.md)
+- [V3.1.2 release notes](releases/RELEASE_NOTES_V3_1_2.md)
+- [V3.1.2 version status](releases/VERSION_STATUS_V3_1_2.md)
+- [V3.1.1 release notes](releases/RELEASE_NOTES_V3_1_1.md)
+- [V3.1.1 version status](releases/VERSION_STATUS_V3_1_1.md)
+- [V3.1.0 release notes](releases/RELEASE_NOTES_V3_1_0.md)
+- [V3.1.0 version status](releases/VERSION_STATUS_V3_1_0.md)
+- [V3.0.8 release notes](releases/RELEASE_NOTES_V3_0_8.md)
+- [V3.0.8 version status](releases/VERSION_STATUS_V3_0_8.md)
+- [V3.0.7 release notes](releases/RELEASE_NOTES_V3_0_7.md)
+- [V3.0.6 release notes](releases/RELEASE_NOTES_V3_0_6.md)
+- [V3.0.5 release notes](releases/RELEASE_NOTES_V3_0_5.md)
+- [V3.0.4 release notes](releases/RELEASE_NOTES_V3_0_4.md)
+- [V3.0.3 release notes](releases/RELEASE_NOTES_V3_0_3.md)
+- [V3.0 release notes](releases/RELEASE_NOTES_V3_0.md)
+- [V2.9 release notes](releases/RELEASE_NOTES_V2_9.md)
+- [V2.8 release notes](releases/RELEASE_NOTES_V2_8.md)
+- [V2.7 release notes](releases/RELEASE_NOTES_V2_7.md)
+- [V2.6 release notes](releases/RELEASE_NOTES_V2_6.md)
+- [V2.5 release notes](releases/RELEASE_NOTES_V2_5.md)
+- [V2.4 release notes](releases/RELEASE_NOTES_V2_4.md)
+- [V2.3 release notes](releases/RELEASE_NOTES_V2_3.md)
+- [V2.2 release notes](releases/RELEASE_NOTES_V2_2.md)
+- [V2.1 release notes](releases/RELEASE_NOTES_V2_1.md)
+- [Early release notes](releases/RELEASE_NOTES.md)

@@ -19,7 +19,7 @@ V3.2.1 的主线是 **OKX-first 收口与前端降噪**：
 - OKX funding rate 下载成为可选的回测真实性输入，默认文件名改为 OKX 标的格式
 - Streamlit 表格统一做 Arrow 安全类型转换，避免混合列触发控制台 ArrowTypeError 噪声
 - 替换已弃用的 `use_container_width` 参数和 `Timestamp.utcnow()` 调用
-- 新增 OKX-first 配置说明文档：`docs/OKX_FIRST_CONFIGURATION.md`
+- 新增 OKX-first 配置说明文档：`docs/data/OKX_FIRST_CONFIGURATION.md`
 
 V3.2.0 的主线是 **前端信息架构与模型训练向导**：
 
@@ -28,7 +28,7 @@ V3.2.0 的主线是 **前端信息架构与模型训练向导**：
 - 新增“模型训练向导”，把训练流程拆成数据、标签、基础模型、诊断、校准、walk-forward和准入
 - 首页自动推荐下一步，减少“不知道从何开始”的问题
 - 原有底层脚本入口保留在高级工具箱，不影响已有功能
-- 新增 `docs/UI_NAVIGATION_AND_MODEL_TRAINING.md`，解释前端层次和模型训练判断顺序
+- 新增 `docs/ui/UI_NAVIGATION_AND_MODEL_TRAINING.md`，解释前端层次和模型训练判断顺序
 
 V3.1.2 的主线是 **Windows Dashboard 启动可靠性**：
 
@@ -211,7 +211,7 @@ call .venv\Scripts\activate.bat
 scripts\run_local_checks.bat
 ```
 
-More details: [docs/LOCAL_ENVIRONMENT.md](docs/LOCAL_ENVIRONMENT.md) and [docs/WINDOWS_STARTUP_TROUBLESHOOTING.md](docs/WINDOWS_STARTUP_TROUBLESHOOTING.md)
+More details: [docs/setup/LOCAL_ENVIRONMENT.md](docs/setup/LOCAL_ENVIRONMENT.md) and [docs/setup/WINDOWS_STARTUP_TROUBLESHOOTING.md](docs/setup/WINDOWS_STARTUP_TROUBLESHOOTING.md)
 
 ## OKX Market Data
 
@@ -244,7 +244,7 @@ Merge confirmed realtime `candle4H` rows into the historical 4H parquet dataset 
 python scripts\merge_realtime_ohlcv.py
 ```
 
-More details: [docs/OKX_REALTIME_MARKET_DATA.md](docs/OKX_REALTIME_MARKET_DATA.md)
+More details: [docs/data/OKX_REALTIME_MARKET_DATA.md](docs/data/OKX_REALTIME_MARKET_DATA.md)
 
 ## Research Pipeline
 
@@ -345,20 +345,21 @@ This keeps GitHub lightweight and avoids publishing local data, credentials, or 
 ## Key Docs
 
 - [Documentation index](docs/INDEX.md)
-- [Local Python environment](docs/LOCAL_ENVIRONMENT.md)
-- [System architecture](docs/SYSTEM_ARCHITECTURE.md)
-- [Operating model](docs/OPERATING_MODEL.md)
-- [Extension interfaces](docs/EXTENSION_INTERFACES.md)
-- [Data and artifacts](docs/DATA_AND_ARTIFACTS.md)
-- [Roadmap](docs/ROADMAP.md)
-- [OKX realtime market data](docs/OKX_REALTIME_MARKET_DATA.md)
-- [OKX data access](docs/OKX_DATA_ACCESS.md)
-- [OKX-first configuration](docs/OKX_FIRST_CONFIGURATION.md)
-- [Data quality and market realism](docs/DATA_QUALITY_MARKET_REALISM.md)
-- [Walk-forward calibration](docs/WALK_FORWARD_CALIBRATION.md)
-- [Model strategy admission](docs/MODEL_STRATEGY_ADMISSION.md)
-- [Operations daily reports](docs/OPERATIONS_DAILY_REPORTS.md)
-- [Safety checklist](docs/SAFETY_CHECKLIST.md)
+- [Current limitations and next steps](docs/project/CURRENT_LIMITATIONS_AND_NEXT_STEPS.md)
+- [Local Python environment](docs/setup/LOCAL_ENVIRONMENT.md)
+- [System architecture](docs/project/SYSTEM_ARCHITECTURE.md)
+- [Operating model](docs/project/OPERATING_MODEL.md)
+- [Extension interfaces](docs/project/EXTENSION_INTERFACES.md)
+- [Data and artifacts](docs/project/DATA_AND_ARTIFACTS.md)
+- [Roadmap](docs/project/ROADMAP.md)
+- [OKX realtime market data](docs/data/OKX_REALTIME_MARKET_DATA.md)
+- [OKX data access](docs/data/OKX_DATA_ACCESS.md)
+- [OKX-first configuration](docs/data/OKX_FIRST_CONFIGURATION.md)
+- [Data quality and market realism](docs/data/DATA_QUALITY_MARKET_REALISM.md)
+- [Walk-forward calibration](docs/research/WALK_FORWARD_CALIBRATION.md)
+- [Model strategy admission](docs/research/MODEL_STRATEGY_ADMISSION.md)
+- [Operations daily reports](docs/operations/OPERATIONS_DAILY_REPORTS.md)
+- [Safety checklist](docs/safety/SAFETY_CHECKLIST.md)
 
 ## Version Notes
 
@@ -376,7 +377,7 @@ This keeps GitHub lightweight and avoids publishing local data, credentials, or 
 - **V2.8**: sequence-model experiment layer.
 - **V2.7**: enhanced model library and optional backend handling.
 
-See [RELEASE_NOTES_V3_2_1.md](RELEASE_NOTES_V3_2_1.md), [docs/VERSION_STATUS_V3_2_1.md](docs/VERSION_STATUS_V3_2_1.md), and the older release-note files for details.
+See [docs/releases/RELEASE_NOTES_V3_2_1.md](docs/releases/RELEASE_NOTES_V3_2_1.md), [docs/releases/VERSION_STATUS_V3_2_1.md](docs/releases/VERSION_STATUS_V3_2_1.md), and the older release-note files under [docs/releases](docs/releases) for details.
 
 ## Roadmap
 
