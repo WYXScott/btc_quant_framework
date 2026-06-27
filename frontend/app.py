@@ -14,6 +14,7 @@ import streamlit as st
 from crypto_quant.config import resolve_path
 from crypto_quant.ui.dashboard_helpers import (
     collect_core_status,
+    file_status,
     latest_sqlite_table,
     load_yaml,
     read_csv,
@@ -37,23 +38,34 @@ CUSTOM_CSS = """
 .block-container {padding-top: 1.2rem; padding-bottom: 2rem;}
 .btc-card {
     border: 1px solid rgba(120,120,120,.18);
-    border-radius: 18px;
+    border-radius: 8px;
     padding: 1rem 1.1rem;
-    background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
-    box-shadow: 0 6px 20px rgba(0,0,0,.06);
+    background: rgba(255,255,255,.035);
 }
 .small-note {font-size: .88rem; color: #777;}
 .good {color: #0a8f48; font-weight: 700;}
 .warn {color: #b7791f; font-weight: 700;}
 .bad {color: #c53030; font-weight: 700;}
 code {border-radius: 8px;}
+div[data-testid="stMetric"] {
+    border: 1px solid rgba(120,120,120,.18);
+    border-radius: 8px;
+    padding: .65rem .75rem;
+}
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 cfg = load_yaml()
+project_cfg = cfg.get("project", {})
+symbol_cfg = cfg.get("symbol", {})
+exchange_cfg = cfg.get("exchange", {})
 
 st.sidebar.title("₿ BTC Quant Console")
+st.sidebar.caption(
+    f"{project_cfg.get('version', 'n/a')} · {exchange_cfg.get('name', 'exchange')} · "
+    f"{symbol_cfg.get('okx_inst_id') or symbol_cfg.get('ccxt_symbol', 'symbol')}"
+)
 page = st.sidebar.radio(
     "功能区",
     [
@@ -76,7 +88,11 @@ page = st.sidebar.radio(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.caption("默认只展示研究、回测、模拟盘和安全检查功能；界面不提供真实实盘下单按钮。")
+live_enabled = bool(cfg.get("live_trading", {}).get("master_enable", False))
+ui_live = bool(cfg.get("ui", {}).get("allow_live_actions", False))
+broker_live = bool(cfg.get("broker", {}).get("safety", {}).get("allow_live_trading", False))
+st.sidebar.metric("Live Gate", "Blocked" if not (live_enabled and ui_live and broker_live) else "Enabled")
+st.sidebar.caption("Research · Paper · Shadow")
 
 
 def show_file_table():
@@ -97,34 +113,140 @@ def run_button(label: str, script: str, args: list[str] | None = None, help_text
         st.code(out or "<no output>", language="text")
 
 
+def _state(ok: bool, ready: str = "就绪", missing: str = "待处理") -> str:
+    return ready if ok else missing
+
+
+def _size_mb(size_bytes: int | None) -> str:
+    if not size_bytes:
+        return "0.00"
+    return f"{size_bytes / 1024 / 1024:.2f}"
+
+
+def _path_row(label: str, path: str | Path) -> dict[str, object]:
+    status = file_status(resolve_path(path))
+    return {
+        "组件": label,
+        "状态": _state(status.exists),
+        "路径": status.path,
+        "大小MB": _size_mb(status.size_bytes),
+        "更新时间": status.modified or "",
+    }
+
+
+def realtime_overview() -> dict[str, object]:
+    realtime_cfg = cfg.get("realtime", {})
+    db_path = resolve_path(realtime_cfg.get("database_path", "data/database/realtime_market.sqlite"))
+    status_df = latest_sqlite_table(db_path, "realtime_status", limit=1, order_by="updated_at")
+    kline_df = latest_sqlite_table(db_path, "realtime_klines", limit=1, order_by="timestamp")
+    if status_df.empty and kline_df.empty:
+        return {"状态": "未初始化", "最新价": "n/a", "最近K线": "n/a", "消息数": 0, "错误": ""}
+    status_row = status_df.iloc[0].to_dict() if not status_df.empty else {}
+    kline_row = kline_df.iloc[0].to_dict() if not kline_df.empty else {}
+    latest_close = kline_row.get("close")
+    return {
+        "状态": status_row.get("status", "n/a"),
+        "最新价": f"{float(latest_close):,.2f}" if latest_close is not None else "n/a",
+        "最近K线": kline_row.get("timestamp") or status_row.get("last_kline_at") or "n/a",
+        "消息数": status_row.get("message_count", 0),
+        "错误": status_row.get("last_error") or "",
+    }
+
+
+def paper_overview() -> dict[str, object]:
+    paper_db = resolve_path(cfg.get("paper", {}).get("database_path", "data/database/paper_trading.sqlite"))
+    counts = sqlite_table_counts(paper_db)
+    equity = latest_sqlite_table(paper_db, "equity_curve", limit=1, order_by="timestamp")
+    account = latest_sqlite_table(paper_db, "account_state", limit=1, order_by="updated_at")
+    equity_row = equity.iloc[0].to_dict() if not equity.empty else {}
+    account_row = account.iloc[0].to_dict() if not account.empty else {}
+    value = equity_row.get("equity", account_row.get("equity"))
+    return {
+        "状态": "就绪" if not counts.empty else "未初始化",
+        "表数": len(counts) if not counts.empty else 0,
+        "权益": f"{float(value):,.2f}" if value is not None else "n/a",
+        "最近更新": equity_row.get("timestamp") or account_row.get("updated_at") or "n/a",
+    }
+
+
+def safety_overview() -> pd.DataFrame:
+    broker_safety = cfg.get("broker", {}).get("safety", {})
+    rows = [
+        {"开关": "live_trading.master_enable", "期望": "False", "当前": cfg.get("live_trading", {}).get("master_enable", False)},
+        {"开关": "ui.allow_live_actions", "期望": "False", "当前": cfg.get("ui", {}).get("allow_live_actions", False)},
+        {"开关": "broker.safety.allow_live_trading", "期望": "False", "当前": broker_safety.get("allow_live_trading", False)},
+        {"开关": "broker.safety.default_dry_run", "期望": "True", "当前": broker_safety.get("default_dry_run", True)},
+        {"开关": "execution.execute_demo_orders", "期望": "False", "当前": cfg.get("execution", {}).get("execute_demo_orders", False)},
+        {"开关": "shadow_live.forbid_order_submission", "期望": "True", "当前": cfg.get("shadow_live", {}).get("forbid_order_submission", True)},
+    ]
+    for row in rows:
+        row["状态"] = "通过" if str(row["当前"]) == row["期望"] else "复核"
+    return pd.DataFrame(rows)
+
+
+def docs_overview() -> pd.DataFrame:
+    docs = [
+        ("文档索引", "docs/INDEX.md"),
+        ("系统架构", "docs/SYSTEM_ARCHITECTURE.md"),
+        ("运行模型", "docs/OPERATING_MODEL.md"),
+        ("数据与产物", "docs/DATA_AND_ARTIFACTS.md"),
+        ("扩展接口", "docs/EXTENSION_INTERFACES.md"),
+        ("路线图", "docs/ROADMAP.md"),
+        ("OKX实时行情", "docs/OKX_REALTIME_MARKET_DATA.md"),
+        ("GitHub资料", "docs/GITHUB_REPOSITORY_PROFILE.md"),
+    ]
+    return pd.DataFrame([_path_row(label, path) for label, path in docs])
+
+
 if page == "总览":
-    st.title("BTC 低频杠杆量化研究控制台")
-    st.caption("V3.0 Research UI：面向 BTC/USDT、4h 低频、3–10x 杠杆研究、统一模型排行榜、长期模拟盘运营日报与只读安全监控。")
+    st.title("系统总览")
+    st.caption(f"{project_cfg.get('name', 'btc_quant_framework')} · {project_cfg.get('version', 'n/a')}")
 
     data_summary = summarize_dataset(cfg)
     model_summary = summarize_model(cfg)
     paper_db = resolve_path(cfg.get("paper", {}).get("database_path", "data/database/paper_trading.sqlite"))
-    table_counts = sqlite_table_counts(paper_db)
+    realtime = realtime_overview()
+    paper = paper_overview()
+    safety_df = safety_overview()
+    safety_pass = bool((safety_df["状态"] == "通过").all())
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("数据集行数", data_summary.get("rows", 0))
-    c2.metric("特征列数", data_summary.get("columns", 0))
-    c3.metric("模型已训练", "是" if model_summary.get("model_exists") else "否")
-    c4.metric("SQLite表数", len(table_counts) if not table_counts.empty else 0)
+    c1.metric("Dataset Rows", data_summary.get("rows", 0))
+    c2.metric("Model", "Ready" if model_summary.get("model_exists") else "Missing")
+    c3.metric("Realtime", str(realtime.get("状态", "n/a")))
+    c4.metric("Safety", "Blocked" if safety_pass else "Review")
 
-    st.markdown("### 当前链路状态")
-    show_file_table()
+    tabs = st.tabs(["链路", "产物", "安全", "文档"])
+    with tabs[0]:
+        rows = [
+            {"层级": "历史行情", "状态": _state(file_status(resolve_path(cfg.get("data", {}).get("raw_path", ""))).exists), "摘要": cfg.get("data", {}).get("raw_path", "")},
+            {"层级": "训练数据集", "状态": _state(bool(data_summary.get("exists"))), "摘要": f"{data_summary.get('rows', 0)} rows / {data_summary.get('columns', 0)} columns"},
+            {"层级": "模型文件", "状态": _state(bool(model_summary.get("model_exists"))), "摘要": f"{model_summary.get('feature_count', 0)} features"},
+            {"层级": "实时行情", "状态": str(realtime.get("状态", "n/a")), "摘要": f"price={realtime.get('最新价')} · messages={realtime.get('消息数')}"},
+            {"层级": "模拟盘", "状态": str(paper.get("状态", "n/a")), "摘要": f"equity={paper.get('权益')} · tables={paper.get('表数')}"},
+        ]
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        if realtime.get("错误"):
+            st.warning(str(realtime["错误"]))
 
-    st.markdown("### 快速判断")
-    checks = []
-    checks.append(("原始K线数据", data_summary.get("exists", False)))
-    checks.append(("训练数据集", data_summary.get("exists", False) and data_summary.get("rows", 0) > 1000))
-    checks.append(("模型文件", model_summary.get("model_exists", False)))
-    checks.append(("模拟盘数据库", paper_db.exists()))
-    checks_df = pd.DataFrame([{"检查项": k, "状态": "通过" if v else "待完成"} for k, v in checks])
-    st.dataframe(checks_df, use_container_width=True, hide_index=True)
+    with tabs[1]:
+        artifacts = [
+            _path_row("原始K线", cfg.get("data", {}).get("raw_path", "data/raw/OKX_BTC_USDT_SWAP_4h.parquet")),
+            _path_row("特征数据", cfg.get("data", {}).get("feature_path", "data/processed/OKX_BTC_USDT_SWAP_4h_features.parquet")),
+            _path_row("训练数据集", cfg.get("data", {}).get("dataset_path", "data/processed/OKX_BTC_USDT_SWAP_4h_dataset.parquet")),
+            _path_row("实时数据库", cfg.get("realtime", {}).get("database_path", "data/database/realtime_market.sqlite")),
+            _path_row("模拟盘数据库", paper_db),
+            _path_row("模型", cfg.get("model", {}).get("model_path", "models/btc_direction_model.joblib")),
+            _path_row("准入报告", "reports/model_admission/model_strategy_admission_report.html"),
+            _path_row("运营日报", "reports/operations/daily_operations_report.html"),
+        ]
+        st.dataframe(pd.DataFrame(artifacts), use_container_width=True, hide_index=True)
 
-    st.info("建议顺序：先运行数据/特征/模型训练，再运行策略研究与模拟盘回放，最后看风控与影子监控。")
+    with tabs[2]:
+        st.dataframe(safety_df, use_container_width=True, hide_index=True)
+
+    with tabs[3]:
+        st.dataframe(docs_overview(), use_container_width=True, hide_index=True)
 
 elif page == "数据与模型":
     st.title("数据与模型训练")
