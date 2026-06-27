@@ -60,7 +60,7 @@ class CircuitBreaker:
             bars = int(self.risk_cfg.get("pause_bars_after_consecutive_losses", 6))
             timeframe = str(self.cfg.get("data", {}).get("timeframe", "4h"))
             pause_delta = self._bars_to_timedelta(bars, timeframe)
-            now = _to_utc_timestamp(timestamp) or pd.Timestamp.utcnow()
+            now = _to_utc_timestamp(timestamp) or pd.Timestamp.now(tz='UTC')
             account.risk_pause_until = (now + pause_delta).isoformat()
 
     @staticmethod

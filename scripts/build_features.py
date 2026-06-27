@@ -4,6 +4,7 @@ import _bootstrap  # noqa: F401
 
 from crypto_quant.config import load_config, resolve_path
 from crypto_quant.data.storage import load_parquet, save_parquet
+from crypto_quant.data.quality import validate_ohlcv_dataframe_from_config
 from crypto_quant.features.feature_builder import build_features
 from crypto_quant.features.labels import add_future_return_label
 
@@ -11,6 +12,12 @@ from crypto_quant.features.labels import add_future_return_label
 def main() -> None:
     cfg = load_config()
     raw = load_parquet(resolve_path(cfg["data"]["raw_path"]))
+    validate_ohlcv_dataframe_from_config(
+        raw,
+        cfg,
+        output_dir=resolve_path(cfg.get("data_quality", {}).get("output_path", "reports/data_quality")),
+        context="build_features",
+    )
     feat = build_features(
         raw,
         windows=cfg["features"]["windows"],

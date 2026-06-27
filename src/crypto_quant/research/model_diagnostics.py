@@ -17,7 +17,8 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
-from crypto_quant.models.train_direction_model import make_model
+from crypto_quant.models.registry import make_model_by_name
+from crypto_quant.models.train_direction_model import time_split
 
 
 @dataclass
@@ -149,23 +150,21 @@ def train_validation_diagnostics(
     feature_columns: Iterable[str],
     train_end: str,
     valid_end: str,
+    model_type: str = "extra_trees",
+    purge_bars: int = 0,
     label_col: str = "label_up",
     future_return_col: str = "future_return",
 ) -> ModelDiagnosticResult:
     feature_columns = list(feature_columns)
     data = dataset.copy().sort_index()
-    if data.index.tz is None:
-        data.index = data.index.tz_localize("UTC")
-    train_end_ts = pd.Timestamp(train_end, tz="UTC")
-    valid_end_ts = pd.Timestamp(valid_end, tz="UTC")
-    train = data.loc[data.index <= train_end_ts]
-    valid = data.loc[(data.index > train_end_ts) & (data.index <= valid_end_ts)]
-    test = data.loc[data.index > valid_end_ts]
+    train, valid, test = time_split(data, train_end=train_end, valid_end=valid_end, purge_bars=purge_bars)
     eval_df = test if not test.empty else valid
     if train.empty or eval_df.empty:
         raise ValueError("Not enough data for diagnostics. Check train_end/valid_end or dataset date range.")
+    if train[label_col].nunique(dropna=True) < 2:
+        raise ValueError("Training split contains a single label class; adjust dates or label threshold.")
 
-    model = make_model()
+    model = make_model_by_name(model_type)
     model.fit(train[feature_columns], train[label_col])
     prob = _positive_proba(model, eval_df[feature_columns])
     metrics = classifier_metric_summary(eval_df[label_col], prob, threshold=0.5)

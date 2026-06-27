@@ -34,6 +34,13 @@ from crypto_quant.ui.service_manager import (
     stop_service,
     tail_service_log,
 )
+from crypto_quant.ui.product_flow import (
+    MODE_DESCRIPTIONS,
+    PAGE_GROUPS,
+    model_training_steps,
+    normalize_page,
+    starter_flow_steps,
+)
 
 st.set_page_config(
     page_title="BTC Quant Research Console",
@@ -75,27 +82,16 @@ st.sidebar.caption(
     f"{project_cfg.get('version', 'n/a')} · {exchange_cfg.get('name', 'exchange')} · "
     f"{symbol_cfg.get('okx_inst_id') or symbol_cfg.get('ccxt_symbol', 'symbol')}"
 )
-page = st.sidebar.radio(
-    "功能区",
-    [
-        "总览",
-        "数据与模型",
-        "实时行情",
-        "服务控制台",
-        "数据质量与真实性",
-        "概率校准与信号可信度",
-        "Walk-forward校准",
-        "模型库增强",
-        "序列模型实验",
-        "统一排行榜与准入",
-        "运营日报",
-        "策略研究",
-        "模拟盘",
-        "风控与只读影子",
-        "流程中心",
-        "软件审查",
-    ],
+
+dashboard_mode = st.sidebar.selectbox(
+    "工作模式",
+    list(PAGE_GROUPS.keys()),
+    index=0,
+    help="先选使用场景，再选择页面；高级工具已收拢到高级工具箱。",
 )
+st.sidebar.caption(MODE_DESCRIPTIONS.get(dashboard_mode, ""))
+display_page = st.sidebar.radio("页面", PAGE_GROUPS[dashboard_mode])
+page = normalize_page(display_page)
 
 st.sidebar.markdown("---")
 live_enabled = bool(cfg.get("live_trading", {}).get("master_enable", False))
@@ -107,11 +103,59 @@ st.sidebar.caption("Research · Paper · Shadow")
 RUN_HISTORY_LIMIT = 8
 
 
+_STRINGIFY_OBJECT_COLUMNS = {
+    "当前值",
+    "值",
+    "期望",
+    "当前",
+    "状态",
+    "说明",
+    "detail",
+    "message",
+}
+
+
+def _arrow_safe_frame(data: object) -> object:
+    """Return a Streamlit/Arrow-friendly copy of common mixed-object tables.
+
+    Newer Streamlit serializes dataframes through PyArrow. Columns that mix
+    strings with floats/ints/booleans can create noisy ArrowTypeError traces in
+    the console even when the UI recovers automatically. Dashboard status tables
+    intentionally mix values such as ``n/a``, booleans and numeric thresholds, so
+    normalize object columns to strings before display.
+    """
+    if not isinstance(data, pd.DataFrame):
+        return data
+    df = data.copy()
+    def _safe_cell(value: object) -> str:
+        try:
+            missing = pd.isna(value)
+            if isinstance(missing, bool) and missing:
+                return ""
+        except Exception:
+            pass
+        if isinstance(value, (dict, list, tuple)):
+            return json.dumps(value, ensure_ascii=False)
+        return str(value)
+
+    for col in df.columns:
+        series = df[col]
+        if series.dtype == "object" or str(col) in _STRINGIFY_OBJECT_COLUMNS:
+            df[col] = series.map(_safe_cell)
+    return df
+
+
+def ui_dataframe(data: object, *args, **kwargs):
+    """Display a dataframe with current Streamlit width API and safe dtypes."""
+    kwargs.setdefault("width", "stretch")
+    return st.dataframe(_arrow_safe_frame(data), *args, **kwargs)
+
+
 def show_file_table():
     status_df = collect_core_status(cfg)
     if not status_df.empty:
         status_df["size_kb"] = (status_df["size_bytes"] / 1024).round(1)
-        st.dataframe(status_df[["path", "exists", "size_kb", "modified"]], use_container_width=True, hide_index=True)
+        ui_dataframe(status_df[["path", "exists", "size_kb", "modified"]], width="stretch", hide_index=True)
 
 
 def _button_key(label: str, script: str, args: list[str] | None = None) -> str:
@@ -124,7 +168,7 @@ def _record_run(script: str, args: list[str], code: int, output: str, elapsed_se
     history.insert(
         0,
         {
-            "time": pd.Timestamp.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "time": pd.Timestamp.now(tz='UTC').strftime("%Y-%m-%d %H:%M:%S UTC"),
             "script": script,
             "args": " ".join(args),
             "code": code,
@@ -145,19 +189,19 @@ def run_button(
     timeout_seconds: int = 900,
 ):
     button_key = key or _button_key(label, script, args)
-    if st.button(label, help=help_text, use_container_width=True, key=button_key):
+    if st.button(label, help=help_text, width="stretch", key=button_key):
         run_args = list(args or [])
         with st.spinner(f"运行 {script} ..."):
-            started = pd.Timestamp.utcnow()
+            started = pd.Timestamp.now(tz='UTC')
             code, out = safe_run_script(script, run_args, timeout_seconds=timeout_seconds)
-            elapsed = (pd.Timestamp.utcnow() - started).total_seconds()
+            elapsed = (pd.Timestamp.now(tz='UTC') - started).total_seconds()
         _record_run(script, run_args, code, out or "", elapsed)
         if code == 0:
             st.success(f"{script} 运行完成，用时 {elapsed:.1f}s")
         else:
             st.error(f"{script} 返回码：{code}")
         if artifacts:
-            st.dataframe(artifact_status_table(artifacts), use_container_width=True, hide_index=True)
+            ui_dataframe(artifact_status_table(artifacts), width="stretch", hide_index=True)
         with st.expander("运行输出", expanded=code != 0):
             st.code(out or "<no output>", language="text")
 
@@ -314,8 +358,13 @@ def docs_overview() -> pd.DataFrame:
         ("路线图", "docs/ROADMAP.md"),
         ("OKX实时行情", "docs/OKX_REALTIME_MARKET_DATA.md"),
         ("本地服务控制台", "docs/SERVICE_OPERATIONS.md"),
+        ("前端导航与模型训练", "docs/UI_NAVIGATION_AND_MODEL_TRAINING.md"),
         ("GitHub资料", "docs/GITHUB_REPOSITORY_PROFILE.md"),
+        ("V3.2.1 OKX收口", "docs/VERSION_STATUS_V3_2_1.md"),
+        ("V3.2.0前端重构", "docs/VERSION_STATUS_V3_2_0.md"),
         ("V3.1.0服务化说明", "docs/VERSION_STATUS_V3_1_0.md"),
+        ("V3.2.1发布说明", "RELEASE_NOTES_V3_2_1.md"),
+        ("V3.2.0发布说明", "RELEASE_NOTES_V3_2_0.md"),
         ("V3.1.0发布说明", "RELEASE_NOTES_V3_1_0.md"),
         ("V3.0.8版本收口", "docs/VERSION_STATUS_V3_0_8.md"),
         ("V3.0.8发布说明", "RELEASE_NOTES_V3_0_8.md"),
@@ -343,7 +392,7 @@ def run_history_panel() -> None:
         st.info("本次会话尚无运行记录。")
         return
     rows = [{k: v for k, v in item.items() if k != "output"} for item in history]
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    ui_dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
     latest = history[0]
     with st.expander(f"最近输出：{latest['script']}", expanded=False):
         st.code(latest.get("output") or "<no output>", language="text")
@@ -547,7 +596,7 @@ def render_workflow(name: str, steps: list[dict[str, object]], key_prefix: str) 
     done = int(table["状态"].eq("已生成").sum()) if not table.empty else 0
     st.metric(f"{name}进度", f"{done}/{len(steps)}")
     st.progress(done / max(len(steps), 1))
-    st.dataframe(table, use_container_width=True, hide_index=True)
+    ui_dataframe(table, width="stretch", hide_index=True)
 
     options = [f"{idx + 1}. {step['label']}" for idx, step in enumerate(steps)]
     selected_label = st.selectbox("步骤", options, key=f"{key_prefix}_select")
@@ -565,7 +614,7 @@ def render_workflow(name: str, steps: list[dict[str, object]], key_prefix: str) 
     with c2:
         outputs = selected.get("outputs", [])
         if outputs:
-            st.dataframe(artifact_status_table(outputs), use_container_width=True, hide_index=True)  # type: ignore[arg-type]
+            ui_dataframe(artifact_status_table(outputs), width="stretch", hide_index=True)  # type: ignore[arg-type]
 
 
 def render_service_console() -> None:
@@ -581,7 +630,7 @@ def render_service_console() -> None:
             "updated_at_utc", "script", "args", "message",
         ] if col in table.columns
     ]
-    st.dataframe(table[display_cols], use_container_width=True, hide_index=True)
+    ui_dataframe(table[display_cols], width="stretch", hide_index=True)
 
     labels = {row["name"]: f"{row['label']} ({row['name']})" for row in rows}
     selected = st.selectbox("服务", [row["name"] for row in rows], format_func=lambda name: labels.get(name, name))
@@ -600,16 +649,16 @@ def render_service_console() -> None:
     a1, a2, a3, a4 = st.columns(4)
     result_key = f"service_action_result::{selected}"
     with a1:
-        if st.button("启动服务", use_container_width=True, key=f"svc_start_{selected}"):
+        if st.button("启动服务", width="stretch", key=f"svc_start_{selected}"):
             st.session_state[result_key] = start_service(cfg, selected)
     with a2:
-        if st.button("停止服务", use_container_width=True, key=f"svc_stop_{selected}"):
+        if st.button("停止服务", width="stretch", key=f"svc_stop_{selected}"):
             st.session_state[result_key] = stop_service(cfg, selected)
     with a3:
-        if st.button("重启服务", use_container_width=True, key=f"svc_restart_{selected}"):
+        if st.button("重启服务", width="stretch", key=f"svc_restart_{selected}"):
             st.session_state[result_key] = restart_service(cfg, selected)
     with a4:
-        if st.button("刷新状态", use_container_width=True, key=f"svc_refresh_{selected}"):
+        if st.button("刷新状态", width="stretch", key=f"svc_refresh_{selected}"):
             st.rerun()
 
     result = st.session_state.get(result_key)
@@ -621,12 +670,12 @@ def render_service_console() -> None:
         st.json(result)
 
     st.markdown("### 状态文件与日志")
-    st.dataframe(
+    ui_dataframe(
         artifact_status_table([
             ("服务状态", status.get("state_path", "")),
             ("服务日志", status.get("log_path", "")),
         ]),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
     log_text = tail_service_log(cfg, selected, max_chars=12000)
@@ -634,7 +683,269 @@ def render_service_console() -> None:
         st.code(log_text or "<no log>", language="text")
 
 
-if page == "总览":
+
+def _first_artifact_path(step: dict[str, object]) -> str:
+    outputs = step.get("outputs", [])
+    if isinstance(outputs, list) and outputs:
+        first = outputs[0]
+        if isinstance(first, tuple):
+            return str(first[1])
+        return str(first)
+    return ""
+
+
+def _step_done(step: dict[str, object]) -> bool:
+    outputs = step.get("outputs", [])
+    if not isinstance(outputs, list) or not outputs:
+        return False
+    table = artifact_status_table(outputs)  # type: ignore[arg-type]
+    return bool(not table.empty and table["状态"].eq("就绪").all())
+
+
+def _next_step(steps: list[dict[str, object]]) -> dict[str, object] | None:
+    for step in steps:
+        if not _step_done(step):
+            return step
+    return None
+
+
+def _pipeline_table(steps: list[dict[str, object]]) -> pd.DataFrame:
+    rows = []
+    for idx, step in enumerate(steps, start=1):
+        outputs = step.get("outputs", [])
+        status = _step_status(step)
+        rows.append(
+            {
+                "序号": idx,
+                "阶段": step.get("stage", ""),
+                "任务": step.get("short_label") or step.get("label", ""),
+                "状态": status,
+                "脚本": step.get("script", ""),
+                "为什么要做": step.get("why", ""),
+                "主要产物": " / ".join(
+                    str(item[0] if isinstance(item, tuple) else Path(str(item)).name)
+                    for item in outputs if isinstance(outputs, list)
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _status_card(title: str, status: str, detail: str = "", help_text: str = "") -> None:
+    if status in {"已完成", "就绪", "通过", "Ready"}:
+        css = "good"
+    elif status in {"待运行", "未初始化", "Missing"}:
+        css = "warn"
+    else:
+        css = "bad" if status in {"失败", "需复核"} else "warn"
+    st.markdown(
+        f"""
+        <div class="btc-card">
+          <div class="small-note">{help_text}</div>
+          <h4 style="margin:.15rem 0 .25rem 0;">{title}</h4>
+          <div class="{css}">{status}</div>
+          <div class="small-note" style="margin-top:.35rem;">{detail}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _model_config_summary() -> pd.DataFrame:
+    data_cfg = cfg.get("data", {}) or {}
+    labels_cfg = cfg.get("labels", {}) or {}
+    model_cfg = cfg.get("model", {}) or {}
+    calibration_cfg = cfg.get("calibration", {}) or {}
+    wf_cfg = cfg.get("walk_forward_calibration", {}) or {}
+    timeframe = data_cfg.get("timeframe", "4h")
+    horizon = labels_cfg.get("horizon_bars", "n/a")
+    threshold = labels_cfg.get("positive_return_threshold", "n/a")
+    return pd.DataFrame(
+        [
+            {"配置项": "交易标的", "当前值": symbol_cfg.get("okx_inst_id") or symbol_cfg.get("ccxt_symbol", "n/a"), "说明": "当前主线是OKX BTC-USDT-SWAP公开行情。"},
+            {"配置项": "K线周期", "当前值": timeframe, "说明": "研究训练以4小时K线为主。"},
+            {"配置项": "预测窗口", "当前值": f"{horizon} bars", "说明": f"约等于 {horizon} × {timeframe}；当前用于预测未来收益方向。"},
+            {"配置项": "正样本阈值", "当前值": threshold, "说明": "未来收益超过该阈值时标记为上涨样本。"},
+            {"配置项": "基础模型", "当前值": model_cfg.get("type", "n/a"), "说明": "基础方向分类模型，后续再做概率校准。"},
+            {"配置项": "训练/验证/测试切分", "当前值": f"train≤{model_cfg.get('train_end')} / valid≤{model_cfg.get('valid_end')}", "说明": "固定时间切分只作为基础检查，最终以walk-forward和准入为主。"},
+            {"配置项": "概率校准", "当前值": calibration_cfg.get("method", "n/a"), "说明": "用于把模型概率转成更可解释的信号强度。"},
+            {"配置项": "Walk-forward窗口", "当前值": f"train={wf_cfg.get('train_window_days')}d / cal={wf_cfg.get('calibration_window_days')}d / test={wf_cfg.get('test_window_days')}d", "说明": "滚动样本外验证，避免只看一次固定切分。"},
+        ]
+    )
+
+
+def render_start_page() -> None:
+    st.title("开始使用")
+    st.caption("V3.2.1：OKX公共数据 + 本地模拟盘主线，并继续保留流程化首页。")
+
+    data_summary = summarize_dataset(cfg)
+    model_summary = summarize_model(cfg)
+    realtime = realtime_overview()
+    paper = paper_overview()
+    steps = starter_flow_steps(cfg)
+    done = sum(1 for step in steps if _step_done(step))
+    next_step = _next_step(steps)
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        _status_card("训练数据", "就绪" if data_summary.get("exists") else "待运行", f"{data_summary.get('rows', 0)} rows", "先获得可训练数据集")
+    with c2:
+        _status_card("基础模型", "就绪" if model_summary.get("model_exists") else "待运行", f"{model_summary.get('feature_count', 0)} features", "再训练方向模型")
+    with c3:
+        _status_card("实时行情", str(realtime.get("状态", "未初始化")), f"最新价 {realtime.get('最新价', 'n/a')}", "公共WebSocket状态")
+    with c4:
+        _status_card("模拟盘", str(paper.get("状态", "未初始化")), f"权益 {paper.get('权益', 'n/a')}", "本地SQLite账本")
+
+    st.markdown("### 推荐下一步")
+    left, right = st.columns([1.15, 1])
+    with left:
+        if next_step is None:
+            st.success("基础链路已经跑通。下一步建议进入‘统一排行榜与准入’或‘运营日报’查看是否具备继续模拟验证的条件。")
+        else:
+            st.info(f"建议先运行：**{next_step.get('label')}**")
+            st.caption(str(next_step.get("why", "")))
+            run_button(
+                "运行推荐步骤",
+                str(next_step.get("script")),
+                list(next_step.get("args", [])),  # type: ignore[arg-type]
+                key="starter_recommended_step",
+                artifacts=next_step.get("outputs", []),  # type: ignore[arg-type]
+            )
+    with right:
+        st.metric("新手流程进度", f"{done}/{len(steps)}")
+        st.progress(done / max(len(steps), 1))
+
+    st.markdown("### 四阶段路线图")
+    r1, r2, r3, r4 = st.columns(4)
+    phase_defs = [
+        (r1, "1 数据准备", "下载K线 → 质量检查 → 构建特征/标签"),
+        (r2, "2 模型训练", "基础模型 → 诊断 → 特征重要性/样本外表现"),
+        (r3, "3 稳健验证", "概率校准 → 信号分层 → Walk-forward → 准入"),
+        (r4, "4 模拟运营", "本地Paper → 实时行情 → 运营日报"),
+    ]
+    for col, title, body in phase_defs:
+        with col:
+            _status_card(title, "按顺序执行", body, "主线流程")
+
+    st.markdown("### 当前流程状态")
+    ui_dataframe(_pipeline_table(steps), width="stretch", hide_index=True)
+    with st.expander("最近运行记录", expanded=False):
+        run_history_panel()
+
+
+def render_model_training_wizard() -> None:
+    st.title("模型训练向导")
+    st.caption("把模型训练拆成可解释的阶段：数据 → 标签 → 基础模型 → 诊断 → 校准 → walk-forward → 准入。")
+
+    steps = model_training_steps(cfg)
+    table = _pipeline_table(steps)
+    done = sum(1 for step in steps if _step_done(step))
+    next_step = _next_step(steps)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("训练流程", f"{done}/{len(steps)}")
+    c2.metric("数据行数", summarize_dataset(cfg).get("rows", 0))
+    c3.metric("模型特征数", summarize_model(cfg).get("feature_count", 0))
+    c4.metric("实盘状态", "Blocked")
+    st.progress(done / max(len(steps), 1))
+
+    if next_step is not None:
+        st.info(f"当前建议步骤：**{next_step.get('label')}**。{next_step.get('why', '')}")
+    else:
+        st.success("训练、校准与基础验证产物已齐全。请重点查看 Walk-forward 和准入结果，而不是只看单次固定切分。")
+
+    tabs = st.tabs(["流程向导", "结果解读", "配置说明", "高级按钮"])
+
+    with tabs[0]:
+        st.markdown("#### 训练流水线")
+        ui_dataframe(table, width="stretch", hide_index=True)
+        options = [f"{idx + 1}. {step.get('label')}" for idx, step in enumerate(steps)]
+        default_idx = steps.index(next_step) if next_step in steps else 0
+        selected_label = st.selectbox("选择要运行的步骤", options, index=default_idx, key="model_wizard_step")
+        selected_idx = options.index(selected_label)
+        selected = steps[selected_idx]
+        left, right = st.columns([1, 1.4])
+        with left:
+            st.markdown("##### 当前步骤说明")
+            st.write(selected.get("why", ""))
+            run_button(
+                "运行当前步骤",
+                str(selected.get("script")),
+                list(selected.get("args", [])),  # type: ignore[arg-type]
+                key=f"model_wizard_run_{selected_idx}",
+                artifacts=selected.get("outputs", []),  # type: ignore[arg-type]
+            )
+        with right:
+            st.markdown("##### 产物状态")
+            ui_dataframe(artifact_status_table(selected.get("outputs", [])), width="stretch", hide_index=True)  # type: ignore[arg-type]
+
+    with tabs[1]:
+        st.markdown("#### 结果不是只看AUC")
+        st.write("推荐判断顺序：先看数据质量是否通过，再看固定切分诊断，随后看概率校准，最后看 Walk-forward 和准入排行榜。")
+        ds = read_parquet(cfg.get("data", {}).get("dataset_path", "data/processed/OKX_BTC_USDT_SWAP_4h_dataset.parquet"), nrows=800)
+        if not ds.empty:
+            a, b = st.columns(2)
+            with a:
+                st.markdown("##### 数据集预览")
+                ui_dataframe(ds.tail(80), width="stretch")
+            with b:
+                if "label_up" in ds.columns:
+                    st.markdown("##### 标签分布")
+                    st.bar_chart(ds["label_up"].value_counts().sort_index())
+                if "future_return" in ds.columns:
+                    st.markdown("##### 未来收益分布")
+                    st.line_chart(ds["future_return"].tail(300))
+        else:
+            st.warning("训练数据集尚未生成。请先在‘流程向导’中运行前3步。")
+
+        result_tabs = st.tabs(["模型诊断", "概率校准", "Walk-forward", "准入排行"])
+        with result_tabs[0]:
+            md = read_json("reports/model_diagnostics/model_diagnostics_summary.json")
+            st.json(md) if md is not None else st.info("尚未生成模型诊断。")
+        with result_tabs[1]:
+            cm = read_json("reports/calibration/calibration_metrics.json")
+            st.json(cm) if cm is not None else st.info("尚未生成概率校准指标。")
+        with result_tabs[2]:
+            wf = read_json("reports/walk_forward_calibration/walk_forward_calibration_summary.json")
+            st.json(wf) if wf is not None else st.info("尚未生成 Walk-forward 校准摘要。")
+        with result_tabs[3]:
+            leaderboard = read_csv("reports/model_admission/model_strategy_leaderboard.csv")
+            ui_dataframe(leaderboard, width="stretch") if not leaderboard.empty else st.info("尚未生成准入排行榜。")
+
+    with tabs[2]:
+        st.markdown("#### 当前模型训练配置")
+        ui_dataframe(_model_config_summary(), width="stretch", hide_index=True)
+        with st.expander("原始配置片段", expanded=False):
+            st.json({
+                "data": cfg.get("data", {}),
+                "features": cfg.get("features", {}),
+                "labels": cfg.get("labels", {}),
+                "model": cfg.get("model", {}),
+                "calibration": cfg.get("calibration", {}),
+                "walk_forward_calibration": cfg.get("walk_forward_calibration", {}),
+            })
+
+    with tabs[3]:
+        st.warning("这里保留底层检查按钮。正常训练建议优先使用‘流程向导’。")
+        a, b, c, d = st.columns(4)
+        with a:
+            run_button("训练Smoke Test", "model_train_smoke.py", key="model_wizard_smoke")
+        with b:
+            run_button("检查模型后端", "check_model_backends.py", key="model_wizard_backends")
+        with c:
+            run_button("严格CV验证", "run_purged_embargo_cv.py", key="model_wizard_cv")
+        with d:
+            run_button("准入排行", "run_model_strategy_admission.py", key="model_wizard_admission")
+
+
+
+if page == "开始使用":
+    render_start_page()
+
+elif page == "模型训练向导":
+    render_model_training_wizard()
+
+elif page == "总览":
     st.title("系统总览")
     st.caption(f"{project_cfg.get('name', 'btc_quant_framework')} · {project_cfg.get('version', 'n/a')}")
 
@@ -661,7 +972,7 @@ if page == "总览":
             {"层级": "实时行情", "状态": str(realtime.get("状态", "n/a")), "摘要": f"price={realtime.get('最新价')} · messages={realtime.get('消息数')}"},
             {"层级": "模拟盘", "状态": str(paper.get("状态", "n/a")), "摘要": f"equity={paper.get('权益')} · tables={paper.get('表数')}"},
         ]
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        ui_dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
         if realtime.get("错误"):
             st.warning(str(realtime["错误"]))
         st.markdown("### 快速动作")
@@ -707,13 +1018,13 @@ if page == "总览":
             _path_row("准入报告", "reports/model_admission/model_strategy_admission_report.html"),
             _path_row("运营日报", "reports/operations/daily_operations_report.html"),
         ]
-        st.dataframe(pd.DataFrame(artifacts), use_container_width=True, hide_index=True)
+        ui_dataframe(pd.DataFrame(artifacts), width="stretch", hide_index=True)
 
     with tabs[2]:
-        st.dataframe(safety_df, use_container_width=True, hide_index=True)
+        ui_dataframe(safety_df, width="stretch", hide_index=True)
 
     with tabs[3]:
-        st.dataframe(docs_overview(), use_container_width=True, hide_index=True)
+        ui_dataframe(docs_overview(), width="stretch", hide_index=True)
 
 elif page == "数据与模型":
     st.title("数据与模型训练")
@@ -730,7 +1041,7 @@ elif page == "数据与模型":
     dataset = read_parquet(data_cfg.get("dataset_path", "data/processed/BTCUSDT_4h_dataset.parquet"), nrows=500)
     if not dataset.empty:
         st.markdown("### 最近数据预览")
-        st.dataframe(dataset.tail(100), use_container_width=True)
+        ui_dataframe(dataset.tail(100), width="stretch")
         if "close" in dataset.columns:
             st.markdown("### 收盘价走势")
             st.line_chart(dataset[["close"]])
@@ -772,7 +1083,7 @@ elif page == "实时行情":
         st.warning(last_error or "实时连接最近发生错误。")
         recovery = realtime_recovery_rows(snapshot)
         if not recovery.empty:
-            st.dataframe(recovery, use_container_width=True, hide_index=True)
+            ui_dataframe(recovery, width="stretch", hide_index=True)
         if "10054" in last_error or "connection_reset" in last_error:
             st.info("10054 通常表示远端或中间网络主动断开连接。系统会把它作为可恢复网络错误记录，并按重连参数继续尝试。")
     elif snapshot.get("severity") == "warn":
@@ -786,14 +1097,14 @@ elif page == "实时行情":
     if counts.empty:
         st.warning("实时行情数据库尚未初始化。")
     else:
-        st.dataframe(counts, use_container_width=True, hide_index=True)
+        ui_dataframe(counts, width="stretch", hide_index=True)
 
     st.markdown("### 连接状态")
     status_df = latest_sqlite_table(db_path, "realtime_status", limit=20, order_by="updated_at")
     if status_df.empty:
         st.info("尚未记录 WebSocket 状态。")
     else:
-        st.dataframe(status_df, use_container_width=True, hide_index=True)
+        ui_dataframe(status_df, width="stretch", hide_index=True)
 
     st.markdown("### 最新K线")
     channel = st.selectbox("频道", channels, index=0)
@@ -820,7 +1131,7 @@ elif page == "实时行情":
                 "volume", "confirm", "received_at", "updated_at",
             ] if c in latest_sorted.columns
         ]
-        st.dataframe(latest_sorted[display_cols].tail(100), use_container_width=True, hide_index=True)
+        ui_dataframe(latest_sorted[display_cols].tail(100), width="stretch", hide_index=True)
 
     st.markdown("### 安全运行按钮")
     sample_messages = st.number_input("采样消息数", min_value=1, max_value=200, value=5, step=1)
@@ -904,7 +1215,7 @@ elif page == "数据质量与真实性":
     if dq.empty:
         st.info("尚未生成数据质量报告，或未发现问题。")
     else:
-        st.dataframe(dq, use_container_width=True)
+        ui_dataframe(dq, width="stretch")
 
     st.markdown("### 回测真实性摘要")
     mr = read_json("reports/market_realism/market_realism_report.json")
@@ -918,7 +1229,7 @@ elif page == "数据质量与真实性":
     if cv.empty:
         st.warning("尚未生成严格时间序列交叉验证结果。")
     else:
-        st.dataframe(cv, use_container_width=True)
+        ui_dataframe(cv, width="stretch")
 
     st.markdown("### V2.4 安全运行按钮")
     c1, c2, c3, c4 = st.columns(4)
@@ -952,18 +1263,18 @@ elif page == "概率校准与信号可信度":
     tabs = st.tabs(["Raw", "Calibrated", "信号分层", "回测摘要"])
     with tabs[0]:
         df = read_csv("reports/calibration/reliability_raw.csv")
-        st.dataframe(df, use_container_width=True) if not df.empty else st.info("未生成 raw reliability 表。")
+        ui_dataframe(df, width="stretch") if not df.empty else st.info("未生成 raw reliability 表。")
     with tabs[1]:
         df = read_csv("reports/calibration/reliability_calibrated.csv")
-        st.dataframe(df, use_container_width=True) if not df.empty else st.info("未生成 calibrated reliability 表。")
+        ui_dataframe(df, width="stretch") if not df.empty else st.info("未生成 calibrated reliability 表。")
     with tabs[2]:
         df = read_csv("reports/signal_confidence/confidence_tier_table.csv")
-        st.dataframe(df, use_container_width=True) if not df.empty else st.info("未生成 confidence tier 表。")
+        ui_dataframe(df, width="stretch") if not df.empty else st.info("未生成 confidence tier 表。")
     with tabs[3]:
         df = read_csv("reports/signal_confidence/confidence_summary.csv")
         if df.empty:
             df = read_csv("reports/calibrated_ml_backtest/calibrated_ml_summary.csv")
-        st.dataframe(df, use_container_width=True) if not df.empty else st.info("未生成校准策略回测摘要。")
+        ui_dataframe(df, width="stretch") if not df.empty else st.info("未生成校准策略回测摘要。")
 
     st.markdown("### 图表")
     img1 = resolve_path("reports/calibration/raw_vs_calibrated_reliability.png")
@@ -1005,23 +1316,23 @@ elif page == "Walk-forward校准":
     tabs = st.tabs(["Fold指标", "可靠性", "信号分层", "动态回测"])
     with tabs[0]:
         df = read_csv("reports/walk_forward_calibration/walk_forward_calibrated_folds.csv")
-        st.dataframe(df, use_container_width=True) if not df.empty else st.info("未生成 fold 指标。")
+        ui_dataframe(df, width="stretch") if not df.empty else st.info("未生成 fold 指标。")
     with tabs[1]:
         col1, col2 = st.columns(2)
         with col1:
             df = read_csv("reports/walk_forward_calibration/walk_forward_reliability_raw.csv")
             st.markdown("#### Raw")
-            st.dataframe(df, use_container_width=True) if not df.empty else st.info("未生成 raw reliability。")
+            ui_dataframe(df, width="stretch") if not df.empty else st.info("未生成 raw reliability。")
         with col2:
             df = read_csv("reports/walk_forward_calibration/walk_forward_reliability_calibrated.csv")
             st.markdown("#### Calibrated")
-            st.dataframe(df, use_container_width=True) if not df.empty else st.info("未生成 calibrated reliability。")
+            ui_dataframe(df, width="stretch") if not df.empty else st.info("未生成 calibrated reliability。")
     with tabs[2]:
         df = read_csv("reports/walk_forward_calibration/walk_forward_confidence_tiers.csv")
-        st.dataframe(df, use_container_width=True) if not df.empty else st.info("未生成 walk-forward 信号分层。")
+        ui_dataframe(df, width="stretch") if not df.empty else st.info("未生成 walk-forward 信号分层。")
     with tabs[3]:
         df = read_csv("reports/walk_forward_calibration/walk_forward_calibrated_summary.csv")
-        st.dataframe(df, use_container_width=True) if not df.empty else st.info("未生成 walk-forward 动态回测摘要。")
+        ui_dataframe(df, width="stretch") if not df.empty else st.info("未生成 walk-forward 动态回测摘要。")
 
     st.markdown("### 图表")
     img1 = resolve_path("reports/walk_forward_calibration/walk_forward_reliability.png")
@@ -1051,25 +1362,25 @@ elif page == "模型库增强":
     if backend.empty:
         st.info("尚未生成模型后端检查。请运行 check_model_backends.py。")
     else:
-        st.dataframe(backend, use_container_width=True)
+        ui_dataframe(backend, width="stretch")
 
     st.markdown("### 可选依赖状态")
     deps = read_csv("reports/model_backends/optional_dependency_status.csv")
     if deps.empty:
         st.info("尚未生成可选依赖状态。")
     else:
-        st.dataframe(deps, use_container_width=True)
+        ui_dataframe(deps, width="stretch")
 
     tabs = st.tabs(["增强模型库", "跳过模型", "Walk-forward校准模型库"])
     with tabs[0]:
         df = read_csv("reports/enhanced_model_library/model_library_summary.csv")
-        st.dataframe(df, use_container_width=True) if not df.empty else st.warning("尚未生成增强模型库结果。")
+        ui_dataframe(df, width="stretch") if not df.empty else st.warning("尚未生成增强模型库结果。")
     with tabs[1]:
         df = read_csv("reports/enhanced_model_library/skipped_models.csv")
-        st.dataframe(df, use_container_width=True) if not df.empty else st.info("没有跳过模型，或报告尚未生成。")
+        ui_dataframe(df, width="stretch") if not df.empty else st.info("没有跳过模型，或报告尚未生成。")
     with tabs[2]:
         df = read_csv("reports/walk_forward_calibration_model_library/walk_forward_calibration_model_library_summary.csv")
-        st.dataframe(df, use_container_width=True) if not df.empty else st.warning("尚未生成 walk-forward 校准模型库结果。")
+        ui_dataframe(df, width="stretch") if not df.empty else st.warning("尚未生成 walk-forward 校准模型库结果。")
 
     st.markdown("### V2.7 安全运行按钮")
     c1, c2, c3, c4 = st.columns(4)
@@ -1100,33 +1411,33 @@ elif page == "序列模型实验":
     if backend.empty:
         st.info("尚未生成序列模型后端检查。")
     else:
-        st.dataframe(backend, use_container_width=True)
+        ui_dataframe(backend, width="stretch")
 
     tabs = st.tabs(["固定切分", "Walk-forward", "可靠性", "跳过模型"])
     with tabs[0]:
         df = read_csv("reports/sequence_models/sequence_model_summary.csv")
-        st.dataframe(df, use_container_width=True) if not df.empty else st.warning("尚未生成固定切分序列模型结果。")
+        ui_dataframe(df, width="stretch") if not df.empty else st.warning("尚未生成固定切分序列模型结果。")
     with tabs[1]:
         df = read_csv("reports/sequence_walk_forward/sequence_walk_forward_summary.csv")
-        st.dataframe(df, use_container_width=True) if not df.empty else st.warning("尚未生成 sequence walk-forward 结果。")
+        ui_dataframe(df, width="stretch") if not df.empty else st.warning("尚未生成 sequence walk-forward 结果。")
         folds = read_csv("reports/sequence_walk_forward/sequence_walk_forward_folds.csv")
         if not folds.empty:
             st.markdown("#### Fold 明细")
-            st.dataframe(folds, use_container_width=True)
+            ui_dataframe(folds, width="stretch")
     with tabs[2]:
         df = read_csv("reports/sequence_walk_forward/sequence_walk_forward_reliability.csv")
         if df.empty:
             df = read_csv("reports/sequence_models/sequence_model_reliability.csv")
-        st.dataframe(df, use_container_width=True) if not df.empty else st.info("尚未生成可靠性分桶。")
+        ui_dataframe(df, width="stretch") if not df.empty else st.info("尚未生成可靠性分桶。")
     with tabs[3]:
         df1 = read_csv("reports/sequence_models/sequence_model_skipped.csv")
         df2 = read_csv("reports/sequence_walk_forward/sequence_walk_forward_skipped.csv")
         if not df1.empty:
             st.markdown("#### 固定切分跳过")
-            st.dataframe(df1, use_container_width=True)
+            ui_dataframe(df1, width="stretch")
         if not df2.empty:
             st.markdown("#### Walk-forward 跳过")
-            st.dataframe(df2, use_container_width=True)
+            ui_dataframe(df2, width="stretch")
         if df1.empty and df2.empty:
             st.info("没有跳过模型，或报告尚未生成。")
 
@@ -1176,13 +1487,13 @@ elif page == "统一排行榜与准入":
             st.warning("尚未生成排行榜。")
         else:
             cols = [c for c in ["candidate_name", "family", "admission_decision", "admission_score", "calibrated_auc", "auc", "sharpe", "calmar", "max_drawdown", "trades", "folds", "blockers", "warnings"] if c in df.columns]
-            st.dataframe(df[cols] if cols else df, use_container_width=True)
+            ui_dataframe(df[cols] if cols else df, width="stretch")
     with tabs[1]:
         df = read_csv("reports/model_admission/admission_summary.csv")
-        st.dataframe(df, use_container_width=True) if not df.empty else st.info("未生成准入汇总。")
+        ui_dataframe(df, width="stretch") if not df.empty else st.info("未生成准入汇总。")
     with tabs[2]:
         df = read_csv("reports/model_admission/candidate_universe.csv")
-        st.dataframe(df, use_container_width=True) if not df.empty else st.info("未生成候选宇宙。")
+        ui_dataframe(df, width="stretch") if not df.empty else st.info("未生成候选宇宙。")
     with tabs[3]:
         img = resolve_path("reports/model_admission/leaderboard_top_scores.png")
         if img.exists():
@@ -1223,7 +1534,7 @@ elif page == "运营日报":
     alerts = read_csv("reports/operations/daily_operations_alerts.csv")
     if not alerts.empty:
         st.markdown("### 运营提醒")
-        st.dataframe(alerts, use_container_width=True, hide_index=True)
+        ui_dataframe(alerts, width="stretch", hide_index=True)
 
     st.markdown("### 权益与回撤")
     eq_img = resolve_path("reports/operations/paper_equity_curve.png")
@@ -1231,12 +1542,12 @@ elif page == "运营日报":
     col1, col2 = st.columns(2)
     with col1:
         if eq_img.exists():
-            st.image(str(eq_img), caption="Paper equity curve", use_container_width=True)
+            st.image(str(eq_img), caption="Paper equity curve", width="stretch")
         else:
             st.caption("尚未生成权益曲线图。")
     with col2:
         if dd_img.exists():
-            st.image(str(dd_img), caption="Paper drawdown", use_container_width=True)
+            st.image(str(dd_img), caption="Paper drawdown", width="stretch")
         else:
             st.caption("尚未生成回撤曲线图。")
 
@@ -1248,12 +1559,12 @@ elif page == "运营日报":
         st.info("尚未生成统一排行榜。")
     else:
         cols = [c for c in ["candidate_name", "family", "admission_decision", "admission_score", "blockers", "warnings"] if c in lb.columns]
-        st.dataframe(lb[cols].head(50) if cols else lb.head(50), use_container_width=True, hide_index=True)
+        ui_dataframe(lb[cols].head(50) if cols else lb.head(50), width="stretch", hide_index=True)
 
     changes = read_csv("reports/operations/daily_admission_changes.csv")
     if not changes.empty:
         st.markdown("### 准入状态变化")
-        st.dataframe(changes, use_container_width=True, hide_index=True)
+        ui_dataframe(changes, width="stretch", hide_index=True)
 
     st.markdown("### 概率漂移与信号命中率")
     ctiers = read_csv("reports/operations/daily_confidence_tier_distribution.csv")
@@ -1264,25 +1575,25 @@ elif page == "运营日报":
         if ctiers.empty:
             st.info("尚未生成信号分层分布。")
         else:
-            st.dataframe(ctiers, use_container_width=True, hide_index=True)
+            ui_dataframe(ctiers, width="stretch", hide_index=True)
     with c2:
         st.caption("按可信度分层的命中率")
         if hit.empty:
             st.info("尚未生成命中率表。")
         else:
-            st.dataframe(hit, use_container_width=True, hide_index=True)
+            ui_dataframe(hit, width="stretch", hide_index=True)
 
     st.markdown("### 模拟盘最近状态")
     tail_tabs = st.tabs(["目标敞口", "订单", "权益尾部"])
     with tail_tabs[0]:
         df = read_csv("reports/operations/daily_target_exposure_tail.csv")
-        st.dataframe(df, use_container_width=True, hide_index=True) if not df.empty else st.caption("无目标敞口记录。")
+        ui_dataframe(df, width="stretch", hide_index=True) if not df.empty else st.caption("无目标敞口记录。")
     with tail_tabs[1]:
         df = read_csv("reports/operations/daily_orders_tail.csv")
-        st.dataframe(df, use_container_width=True, hide_index=True) if not df.empty else st.caption("无订单记录。")
+        ui_dataframe(df, width="stretch", hide_index=True) if not df.empty else st.caption("无订单记录。")
     with tail_tabs[2]:
         df = read_csv("reports/operations/daily_equity_tail.csv")
-        st.dataframe(df, use_container_width=True, hide_index=True) if not df.empty else st.caption("无权益曲线记录。")
+        ui_dataframe(df, width="stretch", hide_index=True) if not df.empty else st.caption("无权益曲线记录。")
 
     st.markdown("### V3.0 运行按钮")
     c1, c2, c3, c4 = st.columns(4)
@@ -1319,7 +1630,7 @@ elif page == "策略研究":
             if df.empty:
                 st.warning(f"尚未生成：{path}")
             else:
-                st.dataframe(df, use_container_width=True)
+                ui_dataframe(df, width="stretch")
 
     st.markdown("### 研究脚本")
     c1, c2, c3 = st.columns(3)
@@ -1341,7 +1652,7 @@ elif page == "模拟盘":
     if table_counts.empty:
         st.warning("模拟盘数据库尚未初始化。")
     else:
-        st.dataframe(table_counts, use_container_width=True, hide_index=True)
+        ui_dataframe(table_counts, width="stretch", hide_index=True)
 
     for table in ["account_state", "target_exposure_decisions", "orders", "equity_curve", "execution_events"]:
         with st.expander(f"查看表：{table}"):
@@ -1349,7 +1660,7 @@ elif page == "模拟盘":
             if df.empty:
                 st.caption("无数据或表不存在。")
             else:
-                st.dataframe(df, use_container_width=True)
+                ui_dataframe(df, width="stretch")
                 if table == "equity_curve":
                     cols = [c for c in ["equity", "cash"] if c in df.columns]
                     if cols:
@@ -1457,7 +1768,7 @@ elif page == "软件审查":
         s4.metric("Fail", 0)
     checks = read_csv("reports/stability/stability_checks.csv")
     if not checks.empty:
-        st.dataframe(checks, use_container_width=True, hide_index=True)
+        ui_dataframe(checks, width="stretch", hide_index=True)
     else:
         st.info("尚未生成稳定性检查报告。")
     run_button(
@@ -1491,7 +1802,7 @@ elif page == "软件审查":
         {"模块": "统一排行榜与准入", "状态": "V2.9新增", "说明": "统一排序表格模型、校准模型、序列模型、规则策略和组合策略，并分配准入等级"},
         {"模块": "运营日报", "状态": "V3.0新增", "说明": "模拟盘权益/回撤、准入池变化、概率漂移、滚动命中率和策略失效提醒"},
     ])
-    st.dataframe(coverage, use_container_width=True, hide_index=True)
+    ui_dataframe(coverage, width="stretch", hide_index=True)
 
     st.markdown("### 需要继续改进的方向")
     improvements = pd.DataFrame([
@@ -1505,7 +1816,7 @@ elif page == "软件审查":
         {"优先级": "已完成", "方向": "候选筛选", "建议": "V2.9 已加入统一模型/策略排行榜和paper候选准入门槛。"},
         {"优先级": "已完成", "方向": "长期模拟盘运营", "建议": "V3.0 已加入运营日报、paper健康检查、信号命中率、概率漂移和准入状态变化跟踪。"},
     ])
-    st.dataframe(improvements, use_container_width=True, hide_index=True)
+    ui_dataframe(improvements, width="stretch", hide_index=True)
 
     st.markdown("### 文件状态")
     show_file_table()

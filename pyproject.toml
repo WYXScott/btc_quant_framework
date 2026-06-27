@@ -4,31 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "btc-quant-framework"
-version = "3.1.0"
+version = "3.2.1"
 description = "Low-frequency BTC leveraged quant research framework with data quality, market realism, walk-forward probability calibration and safety layers"
 requires-python = ">=3.10"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.ruff]
-target-version = "py310"
-src = ["src"]
-line-length = 120
-
-[tool.ruff.lint]
-select = ["F", "E", "W"]
-ignore = [
-    "E501",  # line length handled by formatter
-]
-
-[tool.ruff.lint.per-file-ignores]
-"tests/*" = ["E402", "F841"]
-"scripts/*" = ["F401", "F841"]
-"frontend/*" = ["E402", "F841"]
-
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-skip-magic-trailing-comma = false
-line-ending = "lf"

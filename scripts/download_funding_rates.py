@@ -11,15 +11,16 @@ from crypto_quant.realism.funding import update_funding_rate_file
 def main() -> None:
     cfg = load_config()
     mr_cfg = cfg.get("market_realism", {})
-    out_path = resolve_path(mr_cfg.get("funding_path", "data/raw/BTCUSDT_funding_rates.parquet"))
+    out_path = resolve_path(mr_cfg.get("funding_path", "data/raw/OKX_BTC_USDT_SWAP_funding_rates.parquet"))
     report_path = resolve_path(mr_cfg.get("output_path", "reports/market_realism")) / "funding_download_report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         df = update_funding_rate_file(
-            exchange_name=cfg["exchange"].get("name", "binance"),
+            exchange_name=cfg["exchange"].get("name", "okx"),
             symbol=cfg["symbol"]["ccxt_symbol"],
             since_iso=cfg["data"]["since"],
             output_path=out_path,
+            market_type=cfg["exchange"].get("market_type", "swap"),
             rate_limit=cfg["exchange"].get("rate_limit", True),
         )
         payload = {"status": "ok", "rows": int(len(df)), "path": str(out_path), "start": str(df.index.min()) if not df.empty else None, "end": str(df.index.max()) if not df.empty else None}

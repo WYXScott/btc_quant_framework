@@ -31,12 +31,17 @@ def main() -> None:
     db_path = resolve_path(args.db or realtime_cfg.get("database_path", "data/database/realtime_market.sqlite"))
 
     auto_merge_enabled = bool(realtime_cfg.get("auto_merge_history", True)) and not args.no_auto_merge
+    dq_cfg = cfg.get("data_quality", {})
     auto_merge_config = {
         "enabled": auto_merge_enabled,
         "channel": realtime_cfg.get("merge_channel", "candle4H"),
         "historical_path": resolve_path(cfg.get("data", {}).get("raw_path", "data/raw/OKX_BTC_USDT_SWAP_4h.parquet")),
         "output_path": resolve_path(realtime_cfg.get("merge_output_path") or cfg.get("data", {}).get("raw_path", "data/raw/OKX_BTC_USDT_SWAP_4h.parquet")),
         "confirmed_only": bool(realtime_cfg.get("confirmed_only_merge", True)),
+        "timeframe": str(cfg.get("data", {}).get("timeframe", "4h")),
+        "quality_config": dq_cfg,
+        "quality_output_dir": resolve_path(dq_cfg.get("output_path", "reports/data_quality")) / "realtime_merge",
+        "require_quality_pass": bool(dq_cfg.get("require_pass_before_training", False)),
     }
 
     result = run_okx_realtime_listener(

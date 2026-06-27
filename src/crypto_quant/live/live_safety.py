@@ -1,14 +1,16 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import sqlite3
-from typing import Any
+from typing import Any, Iterable
 
 import pandas as pd
 
+from crypto_quant.config import resolve_path
 from crypto_quant.exchange.ccxt_factory import create_ccxt_exchange
 
 
@@ -325,8 +327,9 @@ class ShadowLiveReadOnlyClient:
         cfg = json.loads(json.dumps(self.cfg, default=str))
         cfg.setdefault("broker", {})
         cfg["broker"]["environment"] = "live"
-        cfg["broker"]["api_key_env"] = self.shadow_cfg.get("api_key_env", "BINANCE_LIVE_READONLY_API_KEY")
-        cfg["broker"]["secret_env"] = self.shadow_cfg.get("secret_env", "BINANCE_LIVE_READONLY_API_SECRET")
+        cfg["broker"]["api_key_env"] = self.shadow_cfg.get("api_key_env", "OKX_LIVE_READONLY_API_KEY")
+        cfg["broker"]["secret_env"] = self.shadow_cfg.get("secret_env", "OKX_LIVE_READONLY_API_SECRET")
+        cfg["broker"]["passphrase_env"] = self.shadow_cfg.get("passphrase_env", "OKX_LIVE_READONLY_API_PASSPHRASE")
         cfg.setdefault("exchange", {})
         cfg["exchange"]["testnet"] = False
         return cfg
@@ -342,8 +345,9 @@ class ShadowLiveReadOnlyClient:
             "open_order_count": 0,
             "message": "Offline preview only. No live private endpoint was queried.",
             "required_env": {
-                "api_key_env": self.shadow_cfg.get("api_key_env", "BINANCE_LIVE_READONLY_API_KEY"),
-                "secret_env": self.shadow_cfg.get("secret_env", "BINANCE_LIVE_READONLY_API_SECRET"),
+                "api_key_env": self.shadow_cfg.get("api_key_env", "OKX_LIVE_READONLY_API_KEY"),
+                "secret_env": self.shadow_cfg.get("secret_env", "OKX_LIVE_READONLY_API_SECRET"),
+                "passphrase_env": self.shadow_cfg.get("passphrase_env", "OKX_LIVE_READONLY_API_PASSPHRASE"),
             },
         }
 

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import json
+import math
 import numpy as np
 import pandas as pd
 
@@ -238,3 +239,48 @@ def _write_quality_html(report: dict[str, Any], issues: pd.DataFrame, path: Path
     <div class='card'><h2>Issues</h2>{issue_html}</div>
     </body></html>"""
     path.write_text(html, encoding="utf-8")
+
+
+def quality_check_kwargs_from_config(cfg: dict[str, Any]) -> dict[str, Any]:
+    dq_cfg = cfg.get("data_quality", {}) or {}
+    return {
+        "max_abs_log_return": float(dq_cfg.get("max_abs_log_return", 0.20)),
+        "zscore_threshold": float(dq_cfg.get("zscore_threshold", 8.0)),
+        "max_range_pct": float(dq_cfg.get("max_range_pct", 0.35)),
+        "max_zero_volume_fraction": float(dq_cfg.get("max_zero_volume_fraction", 0.01)),
+        "allow_incomplete_latest_bar": bool(dq_cfg.get("allow_incomplete_latest_bar", True)),
+    }
+
+
+def validate_ohlcv_dataframe_from_config(
+    df: pd.DataFrame,
+    cfg: dict[str, Any],
+    *,
+    output_dir: str | Path | None = None,
+    context: str = "data_quality_gate",
+    require_pass: bool | None = None,
+) -> tuple[dict[str, Any], pd.DataFrame]:
+    """Run the configured OHLCV quality checks and optionally enforce a hard gate.
+
+    This helper is intentionally reusable by feature building, model training and
+    realtime-to-history merges so that one strict quality policy protects all
+    downstream research artifacts.
+    """
+    dq_cfg = cfg.get("data_quality", {}) or {}
+    if require_pass is None:
+        require_pass = bool(dq_cfg.get("require_pass_before_training", False))
+    report, issues = run_ohlcv_quality_checks(
+        df,
+        timeframe=str(cfg.get("data", {}).get("timeframe", "4h")),
+        **quality_check_kwargs_from_config(cfg),
+    )
+    report["context"] = context
+    if output_dir is not None:
+        save_quality_artifacts(report, issues, output_dir)
+    if require_pass and report.get("status") != "pass":
+        critical = int(report.get("critical_count") or 0)
+        raise RuntimeError(
+            f"OHLCV quality gate failed in {context}: status={report.get('status')} "
+            f"critical_count={critical}. See data_quality report artifacts."
+        )
+    return report, issues

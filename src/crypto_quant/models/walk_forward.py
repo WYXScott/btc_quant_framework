@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Any, Iterable
 
 import pandas as pd
 
@@ -16,6 +16,20 @@ class WalkForwardConfig:
     min_train_bars: int = 1000
     start: str | None = None
     end: str | None = None
+    purge_bars: int = 0
+
+    @classmethod
+    def from_config(cls, cfg: dict[str, Any]) -> "WalkForwardConfig":
+        c = cfg.get("walk_forward", {}) or {}
+        labels = cfg.get("labels", {}) or {}
+        return cls(
+            train_window_days=int(c.get("train_window_days", 1095)),
+            test_window_days=int(c.get("test_window_days", 90)),
+            min_train_bars=int(c.get("min_train_bars", 1000)),
+            start=c.get("start"),
+            end=c.get("end"),
+            purge_bars=int(c.get("purge_bars", labels.get("horizon_bars", 0))),
+        )
 
 
 def _as_utc_timestamp(value: str | None) -> pd.Timestamp | None:
@@ -27,6 +41,26 @@ def _as_utc_timestamp(value: str | None) -> pd.Timestamp | None:
     else:
         ts = ts.tz_convert("UTC")
     return ts
+
+
+def _ensure_utc_index(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy().sort_index()
+    if not isinstance(out.index, pd.DatetimeIndex):
+        out.index = pd.to_datetime(out.index, utc=True, errors="raise")
+    elif out.index.tz is None:
+        out.index = out.index.tz_localize("UTC")
+    else:
+        out.index = out.index.tz_convert("UTC")
+    return out.sort_index()
+
+
+def _drop_tail_for_purge(df: pd.DataFrame, purge_bars: int) -> pd.DataFrame:
+    purge = max(int(purge_bars), 0)
+    if purge == 0:
+        return df
+    if len(df) <= purge:
+        return df.iloc[0:0].copy()
+    return df.iloc[:-purge].copy()
 
 
 def walk_forward_predict(
@@ -43,9 +77,7 @@ def walk_forward_predict(
     The default uses a rolling train window to reduce regime-staleness.
     """
     feature_columns = list(feature_columns)
-    data = dataset.copy().sort_index()
-    if data.index.tz is None:
-        data.index = data.index.tz_localize("UTC")
+    data = _ensure_utc_index(dataset)
 
     start = _as_utc_timestamp(cfg.start)
     end = _as_utc_timestamp(cfg.end)
@@ -65,10 +97,10 @@ def walk_forward_predict(
 
         train_mask = (data.index >= train_start) & (data.index < test_start)
         test_mask = (data.index >= test_start) & (data.index < test_end)
-        train = data.loc[train_mask]
+        train = _drop_tail_for_purge(data.loc[train_mask], cfg.purge_bars)
         test = data.loc[test_mask]
 
-        if len(train) < cfg.min_train_bars or len(test) == 0:
+        if len(train) < cfg.min_train_bars or len(test) == 0 or train[label_col].nunique(dropna=True) < 2:
             test_start = test_end
             continue
 
@@ -90,6 +122,7 @@ def walk_forward_predict(
                 "test_end": test.index.max(),
                 "train_bars": len(train),
                 "test_bars": len(test),
+                "purge_bars": int(cfg.purge_bars),
                 "model_type": model_type,
                 **metrics,
             }

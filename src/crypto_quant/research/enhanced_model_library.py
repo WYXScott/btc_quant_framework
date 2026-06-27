@@ -70,6 +70,7 @@ def run_enhanced_model_library(
     thresholds: Iterable[float] = (0.5, 0.55, 0.58, 0.6, 0.65),
     calibration_bins: int = 10,
     include_optional_if_installed: bool = True,
+    purge_bars: int = 0,
 ) -> dict[str, object]:
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -86,6 +87,7 @@ def run_enhanced_model_library(
             output_dir=out_dir,
             thresholds=thresholds,
             calibration_bins=calibration_bins,
+            purge_bars=purge_bars,
         )
     else:
         summary = pd.DataFrame()

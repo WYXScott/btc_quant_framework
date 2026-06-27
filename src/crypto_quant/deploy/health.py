@@ -9,7 +9,7 @@ import platform
 import sys
 from typing import Any
 
-from crypto_quant.config import project_root
+from crypto_quant.config import project_root, resolve_path
 from crypto_quant.paper.database import PaperStore
 
 

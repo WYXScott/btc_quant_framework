@@ -16,7 +16,6 @@ Planned implementations:
 
 - OKX REST provider
 - OKX WebSocket provider
-- Binance public-data provider
 - local parquet/SQLite provider for replay
 
 ## Signals
@@ -47,8 +46,7 @@ Planned implementations:
 Planned implementations:
 
 - local paper adapter
-- OKX demo adapter
-- Binance demo adapter
+- future OKX private adapter
 - read-only shadow adapter
 - blocked live adapter
 

@@ -1,7 +1,12 @@
 project:
   name: btc_quant_framework
-  version: 3.1.0
+  version: 3.2.1
   timezone: UTC
+
+runtime:
+  # V3.1.2: local commands, dashboard launchers, and managed services should run under the project .venv.
+  require_venv_for_local_commands: true
+  prefer_project_venv: true
 
 exchange:
   name: okx
@@ -29,7 +34,7 @@ data:
 # Private trading APIs remain disabled by default. Use environment proxy settings
 # if direct access to www.okx.com is unavailable.
 download:
-  downloader: okx_native          # okx_native | binance_native | ccxt | auto
+  downloader: okx_native          # okx_native | ccxt | auto; OKX is the supported default
   base_url: https://www.okx.com
   inst_id: BTC-USDT-SWAP
   bar: 4H
@@ -110,6 +115,7 @@ walk_forward:
   train_window_days: 1095    # rolling 3-year training window
   test_window_days: 90       # each fold predicts about one quarter
   min_train_bars: 1000
+  purge_bars: 6              # match labels.horizon_bars to prevent boundary label leakage
   start: null                # null = first timestamp + train_window_days
   end: null                  # null = dataset end
 
@@ -127,6 +133,7 @@ walk_forward_calibration:
   model_type: extra_trees
   method: isotonic
   bins: 10
+  label_horizon_bars: 6
 
 scan:
   leverages: [3.0, 5.0, 10.0]
@@ -166,12 +173,14 @@ paper:
   run_interval_seconds: 14400      # 4h; set shorter only for debugging
   update_before_step: false        # true means fetch latest public market data each paper step
   new_candle_only: true            # avoid repeated decisions on the same latest candle
+  max_consecutive_errors: 3        # stop long-running paper loop after repeated failures
   export_path: reports/paper_trading
 
 execution:
   # local_paper executes against the SQLite-backed PaperAccount.
-  # binance_futures_demo converts the same strategy signal to a Binance USD-M futures demo/testnet order.
-  mode: local_paper            # local_paper | binance_futures_demo
+  # V3.2.1: only local_paper is supported in the main OKX-first workflow.
+  # Future exchange adapters should be added behind an explicit adapter interface.
+  mode: local_paper            # supported default: local_paper
   order_type: market           # market | limit
   execute_demo_orders: false   # keep false unless using explicit script flags and confirmation phrase
   log_intents: true
@@ -191,23 +200,23 @@ broker:
 
 
 native_protection:
-  # V0.7: native exchange protective-order intent generation for Futures Demo/Testnet.
-  enabled: true
+  # V3.2.1: reserved future exchange-protection interface. Disabled in the OKX-first local-paper workflow.
+  enabled: false
   working_type: MARK_PRICE          # MARK_PRICE is safer against last-price wicks; venue-specific.
   position_side: BOTH               # BOTH for one-way mode; LONG/SHORT for hedge mode.
   enable_stop_loss: true
   enable_take_profit: true
   enable_trailing_stop: false       # keep false until SL/TP demo flow is stable.
   trailing_activation_pct: 0.01      # fallback only when ATR/explicit activation is unavailable.
-  trailing_callback_rate: 1.0        # Binance futures callbackRate is percentage-like; check venue limits before execution.
+  trailing_callback_rate: 1.0        # future adapter placeholder; check venue-specific limits before execution.
   fallback_stop_loss_pct: 0.02       # used only if ATR/local protective levels are unavailable.
   fallback_take_profit_pct: 0.04
   cancel_existing_before_replace: false
   min_protective_order_count: 1
 
 user_stream:
-  # V0.8: Binance USD-M Futures user-data stream helper.
-  # Scripts default to dry-run preview. Real listen-key creation requires testnet API keys and confirmation phrase.
+  # V3.2.1: reserved future private user-stream interface. Disabled by default.
+  # The current supported workflow uses OKX public data plus local SQLite paper trading.
   enabled: false
   websocket_base_url: null
   keepalive_interval_seconds: 1800
@@ -426,8 +435,8 @@ ensemble_paper:
 
 
 ensemble_demo_execution:
-  # V1.6: convert V1.4/V1.5 target_exposure into Binance Futures Demo/Testnet order intents.
-  enabled: true
+  # V3.2.1: legacy exchange-demo adapter archive. Disabled in the OKX-first local-paper workflow.
+  enabled: false
   output_path: reports/ensemble_demo_execution
   order_type: market
   leverage: 3.0
@@ -438,8 +447,8 @@ ensemble_demo_execution:
   client_order_prefix: btcqv16
   require_manual_confirmation_for_execute: true
 ensemble_demo_sync:
-  # V1.7: exchange-position synchronized ensemble Demo/Testnet execution gate.
-  enabled: true
+  # V3.2.1: reserved synchronized demo-execution gate. Disabled until a dedicated OKX private adapter exists.
+  enabled: false
   output_path: reports/ensemble_demo_sync
   source: exchange_snapshot          # exchange_snapshot | offline_simulated
   qty_tolerance: 0.00000001
@@ -523,8 +532,9 @@ live_trading:
 shadow_live:
   # V2.0/V2.2: only read-only live account inspection is allowed in shadow mode.
   enabled: false
-  api_key_env: BINANCE_LIVE_READONLY_API_KEY
-  secret_env: BINANCE_LIVE_READONLY_API_SECRET
+  api_key_env: OKX_LIVE_READONLY_API_KEY
+  secret_env: OKX_LIVE_READONLY_API_SECRET
+  passphrase_env: OKX_LIVE_READONLY_API_PASSPHRASE
   require_readonly_key: true
   forbid_order_submission: true
 
@@ -549,6 +559,8 @@ ui:
   output_path: reports/ui
   max_table_rows: 300
   allowed_button_scripts:
+    - check_runtime_env.py
+    - diagnose_dashboard_startup.py
     - deploy_check.py
     - run_stability_check.py
     - status_panel.py
@@ -607,12 +619,12 @@ data_quality:
   max_range_pct: 0.35
   max_zero_volume_fraction: 0.01
   allow_incomplete_latest_bar: true
-  require_pass_before_training: false
+  require_pass_before_training: true
 
 market_realism:
-  # V2.4: funding, liquidation-buffer and realistic-cost reporting.
+  # V3.2.1: OKX-first funding/realism reporting. Funding remains optional.
   output_path: reports/market_realism
-  funding_path: data/raw/BTCUSDT_funding_rates.parquet
+  funding_path: data/raw/OKX_BTC_USDT_SWAP_funding_rates.parquet
   preferred_backtest_result: reports/ensemble/ensemble_dynamic_backtest_result.csv
   include_funding_costs: true
   include_liquidation_risk: true

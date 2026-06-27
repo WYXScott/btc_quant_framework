@@ -25,6 +25,7 @@ def main() -> None:
         output_dir=out_dir,
         thresholds=lib_cfg.get("thresholds", [0.5, 0.55, 0.58, 0.6, 0.65]),
         calibration_bins=cfg.get("research", {}).get("calibration_bins", 10),
+        purge_bars=int(cfg.get("labels", {}).get("horizon_bars", 0)),
     )
     print(summary.to_string(index=False))
     print(f"feature_count={len(feature_columns)}")

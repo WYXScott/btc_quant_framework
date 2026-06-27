@@ -23,6 +23,8 @@ def main() -> None:
         feature_columns=feature_columns,
         train_end=cfg["model"]["train_end"],
         valid_end=cfg["model"]["valid_end"],
+        model_type=cfg.get("model", {}).get("type", "extra_trees"),
+        purge_bars=int(cfg.get("labels", {}).get("horizon_bars", 0)),
     )
 
     (out_dir / "model_metrics.json").write_text(json.dumps(diag.metrics, indent=2, ensure_ascii=False), encoding="utf-8")

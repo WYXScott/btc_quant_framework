@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -10,6 +10,7 @@ from typing import Any
 
 import pandas as pd
 
+from crypto_quant.config import resolve_path
 from crypto_quant.live.live_safety import LiveSafetyGate, LiveSafetyStore, ShadowLiveReadOnlyClient, utc_now_iso
 
 
@@ -602,7 +603,7 @@ def render_shadow_monitor_html(report: AccountComparisonReport) -> str:
 </head>
 <body>
   <h1>BTC Quant Shadow Monitor</h1>
-  <p class="sub">Generated at {html.escape(report.timestamp_utc)} 路 Overall status: {_status_badge(report.status)}</p>
+  <p class="sub">Generated at {html.escape(report.timestamp_utc)} · Overall status: {_status_badge(report.status)}</p>
   <div class="card">
     <h2>Summary</h2>
     <table>{summary_rows}</table>

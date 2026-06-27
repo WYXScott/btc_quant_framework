@@ -81,7 +81,7 @@ def drawdown_series(equity_curve: pd.Series) -> pd.Series:
 
 def save_backtest_reports(
     result: pd.DataFrame,
-    output_dir: str | "pathlib.Path",
+    output_dir: str | "Path",
     prefix: str,
     timeframe: str = "4h",
 ) -> dict[str, object]:

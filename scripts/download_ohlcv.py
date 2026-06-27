@@ -17,7 +17,7 @@ def main() -> None:
         timeframe=cfg["data"]["timeframe"],
         since_iso=cfg["data"]["since"],
         output_path=output_path,
-        downloader=cfg.get("download", {}).get("downloader", "binance_native"),
+        downloader=cfg.get("download", {}).get("downloader", "okx_native"),
         downloader_config=cfg.get("download", {}),
     )
     print(df.tail())

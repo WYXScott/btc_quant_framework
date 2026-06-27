@@ -14,13 +14,7 @@ def main() -> None:
     cfg = load_config()
     df = load_parquet(resolve_path(cfg["data"]["dataset_path"]))
     feature_columns = get_model_feature_columns(df)
-    wf_cfg = WalkForwardConfig(
-        train_window_days=cfg["walk_forward"]["train_window_days"],
-        test_window_days=cfg["walk_forward"]["test_window_days"],
-        min_train_bars=cfg["walk_forward"]["min_train_bars"],
-        start=cfg["walk_forward"].get("start"),
-        end=cfg["walk_forward"].get("end"),
-    )
+    wf_cfg = WalkForwardConfig.from_config(cfg)
     pred_df, folds = walk_forward_predict(df, feature_columns, wf_cfg, probability_col="prob_up_wf")
     scan_cfg = cfg["scan"]
     table = ml_threshold_leverage_scan(

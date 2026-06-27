@@ -156,11 +156,14 @@ def train_calibrated_direction_model(
     label_col: str = "label_up",
     future_return_col: str = "future_return",
     bins: int = 10,
+    purge_bars: int = 0,
 ) -> dict[str, object]:
     feature_columns = list(feature_columns)
-    train, valid, test = time_split(dataset.sort_index(), train_end=train_end, valid_end=valid_end)
+    train, valid, test = time_split(dataset.sort_index(), train_end=train_end, valid_end=valid_end, purge_bars=purge_bars)
     if train.empty or valid.empty:
         raise ValueError("Training and validation periods must both be non-empty for probability calibration.")
+    if train[label_col].nunique(dropna=True) < 2:
+        raise ValueError("Training period contains a single label class; cannot fit calibrated model.")
     eval_df = test if not test.empty else valid
 
     base_model = make_model_by_name(model_type)

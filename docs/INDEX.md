@@ -9,13 +9,15 @@ This directory is the working manual for BTC Quant Framework. It is organized by
 - [Extension Interfaces](EXTENSION_INTERFACES.md)
 - [Data And Artifacts](DATA_AND_ARTIFACTS.md)
 - [Roadmap](ROADMAP.md)
+- [Local Python Environment](LOCAL_ENVIRONMENT.md)
+- [Windows Startup Troubleshooting](WINDOWS_STARTUP_TROUBLESHOOTING.md)
+- [UI Navigation And Model Training](UI_NAVIGATION_AND_MODEL_TRAINING.md)
+- [OKX-First Configuration](OKX_FIRST_CONFIGURATION.md)
 
 ## Market Data
 
 - [OKX Data Access](OKX_DATA_ACCESS.md)
 - [OKX Realtime Market Data](OKX_REALTIME_MARKET_DATA.md)
-- [Binance Data Access](BINANCE_DATA_ACCESS.md)
-- [Binance Restricted Location Workaround](BINANCE_RESTRICTED_LOCATION_WORKAROUND.md)
 
 ## Research And Validation
 
@@ -50,11 +52,19 @@ This directory is the working manual for BTC Quant Framework. It is organized by
 ## Repository Metadata
 
 - [GitHub Repository Profile](GITHUB_REPOSITORY_PROFILE.md)
+- [V3.2.1 Version Status And OKX-First Cleanup](VERSION_STATUS_V3_2_1.md)
+- [V3.2.0 Version Status And Frontend UX Refactor](VERSION_STATUS_V3_2_0.md)
+- [V3.1.2 Version Status And Windows Startup Reliability](VERSION_STATUS_V3_1_2.md)
+- [V3.1.1 Version Status And Local Runtime](VERSION_STATUS_V3_1_1.md)
 - [V3.1.0 Version Status And Service Console](VERSION_STATUS_V3_1_0.md)
 - [V3.0.8 Version Status And Next Steps](VERSION_STATUS_V3_0_8.md)
 
 ## Release Notes
 
+- [V3.2.1 OKX-First Cleanup And Dashboard Noise Reduction](../RELEASE_NOTES_V3_2_1.md)
+- [V3.2.0 Frontend UX And Model Training Wizard](../RELEASE_NOTES_V3_2_0.md)
+- [V3.1.2 Windows Startup Reliability](../RELEASE_NOTES_V3_1_2.md)
+- [V3.1.1 Local Runtime And Venv Reliability](../RELEASE_NOTES_V3_1_1.md)
 - [V3.1.0 Managed Local Services](../RELEASE_NOTES_V3_1_0.md)
 - [V3.0.8 Stability Closure](../RELEASE_NOTES_V3_0_8.md)
 - [V3.0.7 Realtime Recovery And WebUI Health](../RELEASE_NOTES_V3_0_7.md)

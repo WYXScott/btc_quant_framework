@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,7 +10,7 @@ import pandas as pd
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 
 from crypto_quant.models.calibration import probability_metrics, reliability_table
-from crypto_quant.models.sequence_dataset import build_sequence_dataset, split_sequence_dataset
+from crypto_quant.models.sequence_dataset import build_sequence_dataset, split_sequence_dataset, SequenceDataset
 from crypto_quant.models.sequence_models import (
     SEQUENCE_MODEL_REGISTRY,
     default_sequence_models,
@@ -185,7 +185,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;b
 .table{{border-collapse:collapse;width:100%;font-size:13px;}} .table th,.table td{{border-bottom:1px solid #e5e7eb;padding:7px;text-align:left;}}
 .table th{{background:#111827;color:white;}}
 .badge{{display:inline-block;border-radius:999px;padding:4px 10px;background:#eef2ff;color:#3730a3;font-weight:700;}}
-</style></head><body><div class='card'><h1>{title}</h1><p><span class='badge'>V2.8 搴忓垪妯″瀷瀹為獙 路 涓嶆帴瀹炵洏</span></p></div>{''.join(cards)}</body></html>"""
+</style></head><body><div class='card'><h1>{title}</h1><p><span class='badge'>V2.8 序列模型实验 · 不接实盘</span></p></div>{''.join(cards)}</body></html>"""
     output_path.write_text(html, encoding="utf-8")
 
 
@@ -279,12 +279,12 @@ def run_sequence_model_experiments(
     }
     (out_dir / "sequence_model_experiment_summary.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     _write_html(
-        "BTC V2.8 搴忓垪妯″瀷鍥哄畾鍒囧垎瀹為獙",
+        "BTC V2.8 序列模型固定切分实验",
         out_dir / "sequence_model_experiment_report.html",
         [
-            ("瀹為獙鍏冧俊鎭?, f"<pre>{json.dumps(payload, ensure_ascii=False, indent=2)}</pre>"),
-            ("妯″瀷鍙敤鎬?, availability.to_html(index=False, border=0, classes="table")),
-            ("妯″瀷鎸囨爣", summary.to_html(index=False, border=0, classes="table") if not summary.empty else "<p>No runnable models.</p>"),
+            ("实验元信息", f"<pre>{json.dumps(payload, ensure_ascii=False, indent=2)}</pre>"),
+            ("模型可用性", availability.to_html(index=False, border=0, classes="table")),
+            ("模型指标", summary.to_html(index=False, border=0, classes="table") if not summary.empty else "<p>No runnable models.</p>"),
         ],
     )
     return payload
@@ -448,12 +448,12 @@ def run_sequence_walk_forward(
     }
     (out_dir / "sequence_walk_forward_summary.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     _write_html(
-        "BTC V2.8 搴忓垪妯″瀷 Walk-forward 瀹為獙",
+        "BTC V2.8 序列模型 Walk-forward 实验",
         out_dir / "sequence_walk_forward_report.html",
         [
-            ("瀹為獙鍏冧俊鎭?, f"<pre>{json.dumps(payload, ensure_ascii=False, indent=2)}</pre>"),
-            ("妯″瀷姹囨€?, summary.to_html(index=False, border=0, classes="table") if not summary.empty else "<p>No successful folds.</p>"),
-            ("Fold鏄庣粏", folds_df.to_html(index=False, border=0, classes="table") if not folds_df.empty else "<p>No folds.</p>"),
+            ("实验元信息", f"<pre>{json.dumps(payload, ensure_ascii=False, indent=2)}</pre>"),
+            ("模型汇总", summary.to_html(index=False, border=0, classes="table") if not summary.empty else "<p>No successful folds.</p>"),
+            ("Fold明细", folds_df.to_html(index=False, border=0, classes="table") if not folds_df.empty else "<p>No folds.</p>"),
         ],
     )
     return payload
@@ -468,13 +468,13 @@ def build_v28_sequence_report(sequence_dir: str | Path, wf_dir: str | Path, outp
     wf = pd.read_csv(wf_dir / "sequence_walk_forward_summary.csv") if (wf_dir / "sequence_walk_forward_summary.csv").exists() else pd.DataFrame()
     availability = pd.read_csv(sequence_dir / "sequence_model_availability.csv") if (sequence_dir / "sequence_model_availability.csv").exists() else pd.DataFrame()
     _write_html(
-        "BTC V2.8 搴忓垪妯″瀷瀹為獙鎬绘姤鍛?,
+        "BTC V2.8 序列模型实验总报告",
         out_dir / "v2_8_sequence_research_report.html",
         [
-            ("妯″瀷鍙敤鎬?, availability.to_html(index=False, border=0, classes="table") if not availability.empty else "<p>Not generated.</p>"),
-            ("鍥哄畾鍒囧垎瀹為獙", fixed.to_html(index=False, border=0, classes="table") if not fixed.empty else "<p>Not generated.</p>"),
-            ("Walk-forward瀹為獙", wf.to_html(index=False, border=0, classes="table") if not wf.empty else "<p>Not generated.</p>"),
-            ("瑙ｉ噴", "<p>V2.8 鐨勫簭鍒楁ā鍨嬪彧浣滀负鐮旂┒瀹為獙灞傘€傚彧鏈夊綋搴忓垪妯″瀷鍦?walk-forward銆佹垚鏈帇鍔涘拰鏍″噯璇勪及涓ǔ瀹氫紭浜庤〃鏍兼ā鍨嬫椂锛屾墠搴旇€冭檻杩涘叆妯℃嫙鐩樺€欓€夋睜銆?/p>"),
+            ("模型可用性", availability.to_html(index=False, border=0, classes="table") if not availability.empty else "<p>Not generated.</p>"),
+            ("固定切分实验", fixed.to_html(index=False, border=0, classes="table") if not fixed.empty else "<p>Not generated.</p>"),
+            ("Walk-forward实验", wf.to_html(index=False, border=0, classes="table") if not wf.empty else "<p>Not generated.</p>"),
+            ("解释", "<p>V2.8 的序列模型只作为研究实验层。只有当序列模型在 walk-forward、成本压力和校准评估中稳定优于表格模型时，才应考虑进入模拟盘候选池。</p>"),
         ],
     )
     return out_dir / "v2_8_sequence_research_report.html"

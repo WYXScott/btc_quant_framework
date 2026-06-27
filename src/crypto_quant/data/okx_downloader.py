@@ -8,7 +8,7 @@ import time
 import pandas as pd
 import requests
 
-from crypto_quant.data.storage import load_parquet, merge_ohlcv, save_parquet
+from crypto_quant.data.storage import ensure_utc_datetime_index, load_parquet, merge_ohlcv, save_parquet
 from crypto_quant.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -209,7 +209,7 @@ def update_okx_ohlcv_file(
 
     existing: pd.DataFrame | None = None
     if output_path.exists():
-        existing = load_parquet(output_path)
+        existing = ensure_utc_datetime_index(load_parquet(output_path))
         if not existing.empty:
             # OKX backward pagination is robust from latest, but we still merge
             # against existing data. Fetching from the original configured since

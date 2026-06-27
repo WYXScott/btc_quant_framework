@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable
@@ -90,7 +90,7 @@ class TorchSequenceClassifier:
         self.classes_ = np.array([0, 1])
 
     def _device(self):
-        import torch  # noqa: F401
+        import torch
 
         if self.device_name == "auto":
             return torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -110,7 +110,7 @@ class TorchSequenceClassifier:
         return ((X - self.feature_mean_) / self.feature_std_).astype(np.float32)
 
     def _build_model(self, n_features: int):
-        import torch  # noqa: F401
+        import torch
         import torch.nn as nn
 
         architecture = self.architecture
@@ -160,7 +160,7 @@ class TorchSequenceClassifier:
         raise ValueError("architecture must be one of: lstm, gru, tcn")
 
     def fit(self, X: np.ndarray, y: np.ndarray):
-        import torch  # noqa: F401
+        import torch
         import torch.nn as nn
         from torch.utils.data import DataLoader, TensorDataset
 
@@ -191,7 +191,7 @@ class TorchSequenceClassifier:
         return self
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
-        import torch  # noqa: F401
+        import torch
 
         if self.model_ is None:
             raise RuntimeError("Model is not fit.")

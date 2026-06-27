@@ -9,6 +9,7 @@ The service layer is intentionally conservative:
 - status is written to `reports/services`
 - logs are written to `logs/services`
 - real-money trading remains blocked by the existing safety switches
+- stop/restart verifies the recorded PID against the expected service command line before killing a process
 
 ## Managed Services
 
@@ -98,4 +99,6 @@ For now, keep managed services limited to:
 - local paper-trading loops
 - local monitoring/reporting processes
 
-Use `python scripts/run_stability_check.py` after adding a service. It checks that configured service scripts exist and that the service state/log directories are configured.
+Use `python scripts/run_stability_check.py` after adding a service. It checks that configured service scripts exist, remain scoped under `scripts/`, and that the service state/log directories are configured.
+
+If a service status shows `stale_pid_mismatch`, do not force-stop it from the console. It means the recorded PID is alive but does not match the configured service command line; inspect `reports/services/<service>.json` and the OS process list first.
