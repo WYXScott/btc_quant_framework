@@ -10,3 +10,28 @@ requires-python = ">=3.10"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+src = ["src"]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = [
+    "E501",  # line length handled by formatter
+    "B008",  # do not perform function calls in argument defaults
+    "RUF001", "RUF002", "RUF003",  # ambiguous unicode characters in string
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "F841"]
+"scripts/*" = ["S101", "F841"]
+"frontend/*" = ["F841"]
+"src/crypto_quant/ui/service_manager.py" = ["SIM115"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"
