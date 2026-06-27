@@ -2,13 +2,21 @@
 
 A safety-first Python framework for BTC/USDT perpetual-swap quantitative research, walk-forward validation, local paper trading, operations reporting, and OKX public market-data ingestion.
 
-当前版本：**V3.0.8**
+当前版本：**V3.1.0**
 
 > This project is for research, backtesting, local paper trading, and read-only safety monitoring. It does not enable real-money automated trading by default.
 
 ## Overview
 
 BTC Quant Framework 是一套面向 **BTC/USDT 永续合约低频量化研究** 的工程化框架。它把数据下载、数据质量检查、特征工程、模型训练、概率校准、策略回测、组合策略、SQLite 本地模拟盘、运营日报、只读影子监控和 Streamlit 前端控制台放在一个可迭代的项目里。
+
+V3.1.0 的主线是 **本地后台服务控制台**：
+
+- 新增 `managed_services` 白名单配置
+- 新增本地服务管理器和 `scripts/manage_services.py`
+- 前端新增“服务控制台”，支持启动、停止、重启、刷新和查看日志
+- 第一批托管服务覆盖 OKX 实时行情监听和本地组合模拟盘循环
+- 稳定性检查扩展到服务配置和服务脚本
 
 V3.0.8 的主线是 **版本收口与稳定性自检**：
 
@@ -51,7 +59,7 @@ V3.0.5 的主线是 **OKX 实时行情落库**：
 - **Local paper trading**: SQLite-backed account, orders, decisions, equity curve, target-exposure replay.
 - **Operations layer**: daily paper-health reports, signal hit-rate reports, admission snapshots, operational alerts.
 - **Safety layer**: dry-run defaults, live gate, kill switch, hard circuit breaker, read-only shadow mode, manual pre-live workflow.
-- **Frontend**: Streamlit research console for data, models, reports, paper trading, realtime data, and safety checks.
+- **Frontend**: Streamlit research console for data, models, reports, paper trading, realtime data, managed local services, and safety checks.
 
 ## Architecture
 
@@ -241,6 +249,7 @@ This keeps GitHub lightweight and avoids publishing local data, credentials, or 
 
 ## Version Notes
 
+- **V3.1.0**: managed local services, WebUI service console, service status/log files and service-config stability checks.
 - **V3.0.8**: stability closure check, WebUI stability report entry, current-version status document and next-development recommendations.
 - **V3.0.7**: realtime connection recovery metadata, 10054 handling, Streamlit connection health panel and safer UI script runner.
 - **V3.0.6**: Streamlit workflow center, run history, artifact status tables, and UI controls for realtime sampling and paper replay.
@@ -250,7 +259,7 @@ This keeps GitHub lightweight and avoids publishing local data, credentials, or 
 - **V2.8**: sequence-model experiment layer.
 - **V2.7**: enhanced model library and optional backend handling.
 
-See [RELEASE_NOTES_V3_0_8.md](RELEASE_NOTES_V3_0_8.md), [docs/VERSION_STATUS_V3_0_8.md](docs/VERSION_STATUS_V3_0_8.md), and the older release-note files for details.
+See [RELEASE_NOTES_V3_1_0.md](RELEASE_NOTES_V3_1_0.md), [docs/VERSION_STATUS_V3_1_0.md](docs/VERSION_STATUS_V3_1_0.md), and the older release-note files for details.
 
 ## Roadmap
 

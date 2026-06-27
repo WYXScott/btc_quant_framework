@@ -26,6 +26,14 @@ from crypto_quant.ui.dashboard_helpers import (
     summarize_dataset,
     summarize_model,
 )
+from crypto_quant.ui.service_manager import (
+    get_service_status,
+    restart_service,
+    service_status_rows,
+    start_service,
+    stop_service,
+    tail_service_log,
+)
 
 st.set_page_config(
     page_title="BTC Quant Research Console",
@@ -73,6 +81,7 @@ page = st.sidebar.radio(
         "总览",
         "数据与模型",
         "实时行情",
+        "服务控制台",
         "数据质量与真实性",
         "概率校准与信号可信度",
         "Walk-forward校准",
@@ -304,7 +313,10 @@ def docs_overview() -> pd.DataFrame:
         ("扩展接口", "docs/EXTENSION_INTERFACES.md"),
         ("路线图", "docs/ROADMAP.md"),
         ("OKX实时行情", "docs/OKX_REALTIME_MARKET_DATA.md"),
+        ("本地服务控制台", "docs/SERVICE_OPERATIONS.md"),
         ("GitHub资料", "docs/GITHUB_REPOSITORY_PROFILE.md"),
+        ("V3.1.0服务化说明", "docs/VERSION_STATUS_V3_1_0.md"),
+        ("V3.1.0发布说明", "RELEASE_NOTES_V3_1_0.md"),
         ("V3.0.8版本收口", "docs/VERSION_STATUS_V3_0_8.md"),
         ("V3.0.8发布说明", "RELEASE_NOTES_V3_0_8.md"),
         ("V3.0.7发布说明", "RELEASE_NOTES_V3_0_7.md"),
@@ -556,6 +568,72 @@ def render_workflow(name: str, steps: list[dict[str, object]], key_prefix: str) 
             st.dataframe(artifact_status_table(outputs), use_container_width=True, hide_index=True)  # type: ignore[arg-type]
 
 
+def render_service_console() -> None:
+    rows = service_status_rows(cfg)
+    if not rows:
+        st.warning("尚未配置 managed_services.allowed。")
+        return
+
+    table = pd.DataFrame(rows)
+    display_cols = [
+        col for col in [
+            "label", "category", "status", "running", "pid", "started_at_utc",
+            "updated_at_utc", "script", "args", "message",
+        ] if col in table.columns
+    ]
+    st.dataframe(table[display_cols], use_container_width=True, hide_index=True)
+
+    labels = {row["name"]: f"{row['label']} ({row['name']})" for row in rows}
+    selected = st.selectbox("服务", [row["name"] for row in rows], format_func=lambda name: labels.get(name, name))
+    status = get_service_status(cfg, selected)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("状态", status.get("status", "n/a"))
+    c2.metric("PID", status.get("pid") or "n/a")
+    c3.metric("运行中", "是" if status.get("running") else "否")
+    c4.metric("类别", status.get("category", "n/a"))
+
+    st.caption(str(status.get("description") or ""))
+    with st.expander("启动命令", expanded=False):
+        st.code(str(status.get("command") or ""), language="powershell")
+
+    a1, a2, a3, a4 = st.columns(4)
+    result_key = f"service_action_result::{selected}"
+    with a1:
+        if st.button("启动服务", use_container_width=True, key=f"svc_start_{selected}"):
+            st.session_state[result_key] = start_service(cfg, selected)
+    with a2:
+        if st.button("停止服务", use_container_width=True, key=f"svc_stop_{selected}"):
+            st.session_state[result_key] = stop_service(cfg, selected)
+    with a3:
+        if st.button("重启服务", use_container_width=True, key=f"svc_restart_{selected}"):
+            st.session_state[result_key] = restart_service(cfg, selected)
+    with a4:
+        if st.button("刷新状态", use_container_width=True, key=f"svc_refresh_{selected}"):
+            st.rerun()
+
+    result = st.session_state.get(result_key)
+    if isinstance(result, dict):
+        if result.get("running") or result.get("status") in {"stopped", "exited_or_stale"}:
+            st.success(result.get("message") or result.get("status") or "服务状态已更新")
+        else:
+            st.warning(result.get("message") or result.get("status") or "服务状态需要复核")
+        st.json(result)
+
+    st.markdown("### 状态文件与日志")
+    st.dataframe(
+        artifact_status_table([
+            ("服务状态", status.get("state_path", "")),
+            ("服务日志", status.get("log_path", "")),
+        ]),
+        use_container_width=True,
+        hide_index=True,
+    )
+    log_text = tail_service_log(cfg, selected, max_chars=12000)
+    with st.expander("最近日志", expanded=True):
+        st.code(log_text or "<no log>", language="text")
+
+
 if page == "总览":
     st.title("系统总览")
     st.caption(f"{project_cfg.get('name', 'btc_quant_framework')} · {project_cfg.get('version', 'n/a')}")
@@ -793,6 +871,13 @@ elif page == "实时行情":
         help_text="测试 OKX public/time、ticker、candles、history-candles。",
         timeout_seconds=120,
     )
+
+
+elif page == "服务控制台":
+    st.title("本地服务控制台")
+    st.caption("V3.1.0：把长期运行的公共行情监听和本地模拟盘循环从命令行升级为可启停、可查看状态和日志的本地服务。")
+    st.warning("本页面只管理 managed_services.allowed 中的本地脚本，不开放真实下单。")
+    render_service_console()
 
 
 elif page == "数据质量与真实性":

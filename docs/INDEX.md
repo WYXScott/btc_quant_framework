@@ -33,6 +33,7 @@ This directory is the working manual for BTC Quant Framework. It is organized by
 - [Ensemble Dynamic Positioning](ENSEMBLE_DYNAMIC_POSITIONING.md)
 - [Ensemble Paper Trading](ENSEMBLE_PAPER_TRADING.md)
 - [Operations Daily Reports](OPERATIONS_DAILY_REPORTS.md)
+- [Service Operations](SERVICE_OPERATIONS.md)
 - [Deployment Demo](DEPLOYMENT_DEMO.md)
 
 ## Execution And Safety
@@ -49,10 +50,12 @@ This directory is the working manual for BTC Quant Framework. It is organized by
 ## Repository Metadata
 
 - [GitHub Repository Profile](GITHUB_REPOSITORY_PROFILE.md)
+- [V3.1.0 Version Status And Service Console](VERSION_STATUS_V3_1_0.md)
 - [V3.0.8 Version Status And Next Steps](VERSION_STATUS_V3_0_8.md)
 
 ## Release Notes
 
+- [V3.1.0 Managed Local Services](../RELEASE_NOTES_V3_1_0.md)
 - [V3.0.8 Stability Closure](../RELEASE_NOTES_V3_0_8.md)
 - [V3.0.7 Realtime Recovery And WebUI Health](../RELEASE_NOTES_V3_0_7.md)
 - [V3.0.6 WebUI Workflow Center](../RELEASE_NOTES_V3_0_6.md)

@@ -1,6 +1,6 @@
 project:
   name: btc_quant_framework
-  version: 3.0.8
+  version: 3.1.0
   timezone: UTC
 
 exchange:
@@ -279,6 +279,27 @@ service:
   max_iterations_default: 1
   fetch_private_default: false
   execute_recovery_default: false
+
+managed_services:
+  # V3.1.0 local background services exposed in the Streamlit service console.
+  # Only scripts listed here can be started/stopped by the WebUI service layer.
+  # These defaults are public-market-data and local-paper only; no live orders are enabled.
+  enabled: true
+  state_dir: reports/services
+  log_dir: logs/services
+  allowed:
+    okx_realtime_listener:
+      label: OKX实时行情监听
+      category: realtime
+      script: run_okx_realtime_listener.py
+      args: ["--reconnects", "50", "--reconnect-sleep-seconds", "5"]
+      description: Persist OKX public candle1m/candle4H data to the local realtime SQLite database.
+    paper_ensemble_loop:
+      label: 本地组合模拟盘循环
+      category: paper
+      script: paper_ensemble_loop.py
+      args: []
+      description: Run the local SQLite-backed ensemble paper-trading loop without exchange order submission.
 
 strategy_library:
   # V1.2: rule-based BTC low-frequency strategy candidates.

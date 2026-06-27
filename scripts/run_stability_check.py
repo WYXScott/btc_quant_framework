@@ -30,7 +30,9 @@ def _check_required_files(rows: list[dict[str, Any]], version: str) -> None:
         "docs/SYSTEM_ARCHITECTURE.md",
         "docs/OPERATING_MODEL.md",
         "docs/EXTENSION_INTERFACES.md",
+        "docs/SERVICE_OPERATIONS.md",
         "docs/ROADMAP.md",
+        "scripts/manage_services.py",
         f"RELEASE_NOTES_V{version.replace('.', '_')}.md",
     ]
     for path in required:
@@ -54,6 +56,27 @@ def _check_allowed_scripts(rows: list[dict[str, Any]], cfg: dict[str, Any]) -> N
         _add(rows, "ui", "duplicate_allowed_scripts", "warn", ", ".join(sorted(duplicates)))
     else:
         _add(rows, "ui", "duplicate_allowed_scripts", "pass", "no duplicates")
+
+
+def _check_managed_services(rows: list[dict[str, Any]], cfg: dict[str, Any]) -> None:
+    service_cfg = cfg.get("managed_services", {}) or {}
+    allowed = service_cfg.get("allowed", {}) or {}
+    _add(rows, "services", "managed_services.enabled", "pass" if service_cfg.get("enabled") is True else "warn", "service console config")
+    _add(rows, "services", "state_dir", "pass" if service_cfg.get("state_dir") else "fail", str(service_cfg.get("state_dir", "")))
+    _add(rows, "services", "log_dir", "pass" if service_cfg.get("log_dir") else "fail", str(service_cfg.get("log_dir", "")))
+    if not allowed:
+        _add(rows, "services", "allowed", "warn", "no managed services configured")
+        return
+    for name, raw in allowed.items():
+        item = raw if isinstance(raw, dict) else {}
+        script = str(item.get("script", "")).strip()
+        if not script:
+            _add(rows, "services", str(name), "fail", "managed service is missing script")
+            continue
+        script_path = project_root() / "scripts" / script
+        _add(rows, "services", f"{name}.script", "pass" if script_path.exists() else "fail", script)
+        args = item.get("args", [])
+        _add(rows, "services", f"{name}.args", "pass" if isinstance(args, list) else "fail", str(args))
 
 
 def _check_safety_switches(rows: list[dict[str, Any]], cfg: dict[str, Any]) -> None:
@@ -123,6 +146,7 @@ def main() -> None:
 
     _check_required_files(rows, version)
     _check_allowed_scripts(rows, cfg)
+    _check_managed_services(rows, cfg)
     _check_safety_switches(rows, cfg)
     _check_runtime_paths(rows, cfg)
     _check_realtime_schema(rows, cfg)
