@@ -60,6 +60,7 @@ def make_ml_dataset(periods: int = 180) -> pd.DataFrame:
 def test_realtime_klines() -> None:
     from crypto_quant.data.realtime import (
         RealtimeKlineStore,
+        classify_realtime_error,
         merge_realtime_ohlcv_file,
         parse_okx_candle_message,
     )
@@ -83,6 +84,10 @@ def test_realtime_klines() -> None:
     assert abs(klines[0].volume - 0.21) < 1e-12
 
     store = RealtimeKlineStore(db_path)
+    reset_error = classify_realtime_error(ConnectionResetError(10054, "remote host forcibly closed the connection"))
+    assert reset_error["category"] == "connection_reset"
+    assert reset_error["code"] == 10054
+    assert reset_error["retryable"] is True
     assert store.upsert_klines(klines) == 1
     store.update_status(
         status="receiving",
@@ -94,6 +99,10 @@ def test_realtime_klines() -> None:
         kline_count=1,
     )
     assert store.latest_status()["status"] == "receiving"
+    store.update_status(status="error", last_error="connection_reset_10054")
+    assert store.latest_status()["last_error"] == "connection_reset_10054"
+    store.update_status(status="receiving", clear_last_error=True)
+    assert store.latest_status()["last_error"] is None
     latest = store.latest_klines(inst_id="BTC-USDT-SWAP", channel="candle4H")
     assert len(latest) == 1
     assert int(latest["confirm"].iloc[0]) == 1

@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 
 OKX_PUBLIC_WS_URL = "wss://ws.okx.com:8443/ws/v5/public"
 OKX_BUSINESS_WS_URL = "wss://ws.okx.com:8443/ws/v5/business"
+TRANSIENT_NETWORK_ERROR_CODES = {10053, 10054, 10060, 10061}
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,62 @@ def _bool_confirm(value: Any) -> bool:
 
 def _iso_from_ms(value: Any) -> str:
     return pd.to_datetime(int(value), unit="ms", utc=True).isoformat()
+
+
+def _extract_error_code(error: Any) -> int | None:
+    for attr in ("winerror", "errno"):
+        value = getattr(error, attr, None)
+        if isinstance(value, int):
+            return value
+    for arg in getattr(error, "args", ()):
+        if isinstance(arg, int):
+            return arg
+        if isinstance(arg, OSError):
+            nested = _extract_error_code(arg)
+            if nested is not None:
+                return nested
+        if isinstance(arg, (tuple, list)):
+            for item in arg:
+                if isinstance(item, int):
+                    return item
+    text = repr(error)
+    for code in TRANSIENT_NETWORK_ERROR_CODES:
+        if str(code) in text:
+            return code
+    return None
+
+
+def classify_realtime_error(error: Any) -> dict[str, Any]:
+    """Return a compact, UI-friendly classification for WebSocket/network errors."""
+    code = _extract_error_code(error)
+    text = repr(error)
+    message = str(error)
+    lower = f"{text} {message}".lower()
+    category = "network_error"
+    if code == 10054 or "forcibly closed" in lower or "connection reset" in lower:
+        category = "connection_reset"
+    elif "timed out" in lower or "timeout" in lower:
+        category = "timeout"
+    elif "proxy" in lower:
+        category = "proxy_error"
+    elif "ssl" in lower or "tls" in lower:
+        category = "tls_error"
+    retryable = category in {"connection_reset", "timeout", "proxy_error", "tls_error", "network_error"}
+    if code is not None:
+        retryable = retryable or code in TRANSIENT_NETWORK_ERROR_CODES
+    if category == "connection_reset" and code == 10054:
+        summary = "connection_reset_10054: remote host forcibly closed the connection; safe to retry."
+    else:
+        summary = f"{category}: {message or text}"
+    return {
+        "category": category,
+        "code": code,
+        "retryable": bool(retryable),
+        "type": type(error).__name__,
+        "message": message,
+        "repr": text,
+        "summary": summary,
+    }
 
 
 def parse_okx_candle_message(
@@ -274,6 +331,7 @@ class RealtimeKlineStore:
         message_count: int | None = None,
         kline_count: int | None = None,
         details: dict[str, Any] | None = None,
+        clear_last_error: bool = False,
     ) -> None:
         with self.connect() as conn:
             existing = conn.execute(
@@ -296,7 +354,10 @@ class RealtimeKlineStore:
                     status=excluded.status,
                     last_message_at=COALESCE(excluded.last_message_at, realtime_status.last_message_at),
                     last_kline_at=COALESCE(excluded.last_kline_at, realtime_status.last_kline_at),
-                    last_error=COALESCE(excluded.last_error, realtime_status.last_error),
+                    last_error=CASE
+                        WHEN ? THEN NULL
+                        ELSE COALESCE(excluded.last_error, realtime_status.last_error)
+                    END,
                     message_count=excluded.message_count,
                     kline_count=excluded.kline_count,
                     details_json=excluded.details_json,
@@ -314,6 +375,7 @@ class RealtimeKlineStore:
                     prev_message_count if message_count is None else int(message_count),
                     prev_kline_count if kline_count is None else int(kline_count),
                     json.dumps(details or {}, ensure_ascii=False, default=str),
+                    int(bool(clear_last_error)),
                 ),
             )
             conn.commit()
@@ -448,6 +510,8 @@ def run_okx_realtime_listener(
     }
     auto_merge_config = auto_merge_config or {}
     merge_channel = auto_merge_config.get("channel")
+    max_reconnects = max(0, int(reconnects))
+    last_error_info: dict[str, Any] | None = None
 
     def maybe_merge(klines: list[RealtimeKline]) -> None:
         if not auto_merge_config.get("enabled"):
@@ -466,12 +530,15 @@ def run_okx_realtime_listener(
         )
 
     def on_open(ws):
+        nonlocal last_error_info
+        last_error_info = None
         store.update_status(
             component=component,
             inst_id=inst_id,
             channels=channels,
             status="connected",
-            details={"url": ws_url},
+            details={"url": ws_url, "attempt": attempts, "max_reconnects": max_reconnects},
+            clear_last_error=True,
         )
         ws.send(json.dumps(subscribe_payload))
         logger.info("Subscribed to OKX realtime channels: %s", channels)
@@ -497,27 +564,42 @@ def run_okx_realtime_listener(
             last_error=None,
             message_count=counts["messages"],
             kline_count=counts["klines"],
-            details={"url": ws_url, "last_payload_type": "kline" if klines else "control"},
+            details={
+                "url": ws_url,
+                "attempt": attempts,
+                "max_reconnects": max_reconnects,
+                "last_payload_type": "kline" if klines else "control",
+            },
+            clear_last_error=True,
         )
         if max_messages is not None and counts["messages"] >= int(max_messages):
             counts["closed_by_limit"] = True
             ws.close()
 
     def on_error(ws, error):
+        nonlocal last_error_info
+        last_error_info = classify_realtime_error(error)
         store.update_status(
             component=component,
             inst_id=inst_id,
             channels=channels,
             status="error",
-            last_error=repr(error),
+            last_error=str(last_error_info["summary"]),
             message_count=counts["messages"],
             kline_count=counts["klines"],
-            details={"url": ws_url},
+            details={
+                "url": ws_url,
+                "attempt": attempts,
+                "max_reconnects": max_reconnects,
+                "error": last_error_info,
+            },
         )
         logger.warning("OKX realtime WebSocket error: %r", error)
 
     def on_close(ws, code, message):
         status = "sample_complete" if counts["closed_by_limit"] else "closed"
+        if not counts["closed_by_limit"] and last_error_info is not None:
+            status = "closed_after_error"
         store.update_status(
             component=component,
             inst_id=inst_id,
@@ -525,7 +607,14 @@ def run_okx_realtime_listener(
             status=status,
             message_count=counts["messages"],
             kline_count=counts["klines"],
-            details={"url": ws_url, "close_code": code, "close_message": message},
+            details={
+                "url": ws_url,
+                "attempt": attempts,
+                "max_reconnects": max_reconnects,
+                "close_code": code,
+                "close_message": message,
+                "error": last_error_info,
+            },
         )
         logger.info("OKX realtime WebSocket closed: code=%s message=%s", code, message)
 
@@ -540,12 +629,65 @@ def run_okx_realtime_listener(
             on_close=on_close,
         )
         kwargs = _proxy_kwargs(proxy_url, use_env_proxy=use_env_proxy)
-        ws.run_forever(ping_interval=20, ping_timeout=10, **kwargs)
+        try:
+            ws.run_forever(ping_interval=20, ping_timeout=10, **kwargs)
+        except Exception as exc:
+            last_error_info = classify_realtime_error(exc)
+            store.update_status(
+                component=component,
+                inst_id=inst_id,
+                channels=channels,
+                status="error",
+                last_error=str(last_error_info["summary"]),
+                message_count=counts["messages"],
+                kline_count=counts["klines"],
+                details={
+                    "url": ws_url,
+                    "attempt": attempts,
+                    "max_reconnects": max_reconnects,
+                    "error": last_error_info,
+                },
+            )
+            logger.warning("OKX realtime WebSocket run_forever failed: %r", exc)
         if counts["closed_by_limit"]:
             break
-        if attempts > int(reconnects):
+        if attempts > max_reconnects:
             break
+        store.update_status(
+            component=component,
+            inst_id=inst_id,
+            channels=channels,
+            status="reconnecting",
+            last_error=str(last_error_info["summary"]) if last_error_info else None,
+            message_count=counts["messages"],
+            kline_count=counts["klines"],
+            details={
+                "url": ws_url,
+                "attempt": attempts,
+                "next_attempt": attempts + 1,
+                "max_reconnects": max_reconnects,
+                "sleep_seconds": reconnect_sleep_seconds,
+                "error": last_error_info,
+            },
+        )
         time.sleep(float(reconnect_sleep_seconds))
+
+    if not counts["closed_by_limit"] and last_error_info is not None and attempts > max_reconnects:
+        store.update_status(
+            component=component,
+            inst_id=inst_id,
+            channels=channels,
+            status="error_stopped",
+            last_error=str(last_error_info["summary"]),
+            message_count=counts["messages"],
+            kline_count=counts["klines"],
+            details={
+                "url": ws_url,
+                "attempts": attempts,
+                "max_reconnects": max_reconnects,
+                "error": last_error_info,
+            },
+        )
 
     return {
         "db_path": str(db_path),
@@ -553,5 +695,8 @@ def run_okx_realtime_listener(
         "channels": channels,
         "messages": counts["messages"],
         "klines": counts["klines"],
+        "attempts": attempts,
+        "max_reconnects": max_reconnects,
+        "last_error": last_error_info,
         "status": store.latest_status(component),
     }

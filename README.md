@@ -2,13 +2,20 @@
 
 A safety-first Python framework for BTC/USDT perpetual-swap quantitative research, walk-forward validation, local paper trading, operations reporting, and OKX public market-data ingestion.
 
-当前版本：**V3.0.6**
+当前版本：**V3.0.7**
 
 > This project is for research, backtesting, local paper trading, and read-only safety monitoring. It does not enable real-money automated trading by default.
 
 ## Overview
 
 BTC Quant Framework 是一套面向 **BTC/USDT 永续合约低频量化研究** 的工程化框架。它把数据下载、数据质量检查、特征工程、模型训练、概率校准、策略回测、组合策略、SQLite 本地模拟盘、运营日报、只读影子监控和 Streamlit 前端控制台放在一个可迭代的项目里。
+
+V3.0.7 的主线是 **实时行情连接恢复与前端体验增强**：
+
+- OKX WebSocket `ConnectionResetError(10054)` 识别为可恢复网络错误
+- 实时状态记录重连尝试、错误分类和恢复详情
+- Streamlit 实时行情页展示连接健康、10054 说明和重连参数
+- 前端按钮执行器捕获超时和系统异常，避免页面崩溃
 
 V3.0.6 的主线是 **WebUI 流程中心与按钮化操作**：
 
@@ -227,6 +234,7 @@ This keeps GitHub lightweight and avoids publishing local data, credentials, or 
 
 ## Version Notes
 
+- **V3.0.7**: realtime connection recovery metadata, 10054 handling, Streamlit connection health panel and safer UI script runner.
 - **V3.0.6**: Streamlit workflow center, run history, artifact status tables, and UI controls for realtime sampling and paper replay.
 - **V3.0.5**: OKX realtime WebSocket candle persistence, realtime Streamlit page, confirmed 4H merge path.
 - **V3.0**: long-running paper-trading operations layer and daily reports.
@@ -234,7 +242,7 @@ This keeps GitHub lightweight and avoids publishing local data, credentials, or 
 - **V2.8**: sequence-model experiment layer.
 - **V2.7**: enhanced model library and optional backend handling.
 
-See [RELEASE_NOTES_V3_0_6.md](RELEASE_NOTES_V3_0_6.md), [RELEASE_NOTES_V3_0_5.md](RELEASE_NOTES_V3_0_5.md), and the older release-note files for details.
+See [RELEASE_NOTES_V3_0_7.md](RELEASE_NOTES_V3_0_7.md), [RELEASE_NOTES_V3_0_6.md](RELEASE_NOTES_V3_0_6.md), [RELEASE_NOTES_V3_0_5.md](RELEASE_NOTES_V3_0_5.md), and the older release-note files for details.
 
 ## Roadmap
 

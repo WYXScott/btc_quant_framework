@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -192,6 +193,77 @@ def realtime_overview() -> dict[str, object]:
     }
 
 
+def _json_dict(value: object) -> dict[str, object]:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return {}
+    try:
+        parsed = json.loads(value)
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def realtime_health_snapshot(db_path: str | Path, component: str = "okx_realtime_ws") -> dict[str, object]:
+    status_df = latest_sqlite_table(db_path, "realtime_status", limit=20, order_by="updated_at")
+    if not status_df.empty and "component" in status_df.columns:
+        filtered = status_df[status_df["component"] == component]
+        if not filtered.empty:
+            status_df = filtered.head(1)
+        else:
+            status_df = status_df.head(1)
+    if status_df.empty:
+        return {
+            "status": "未初始化",
+            "message_count": 0,
+            "kline_count": 0,
+            "last_error": "",
+            "updated_at": "",
+            "details": {},
+            "severity": "missing",
+        }
+    row = status_df.iloc[0].to_dict()
+    details = _json_dict(row.get("details_json"))
+    status = str(row.get("status") or "n/a")
+    last_error = str(row.get("last_error") or "")
+    severity = "ok"
+    if status in {"error", "closed_after_error", "error_stopped"} or last_error:
+        severity = "error"
+    elif status in {"reconnecting", "closed"}:
+        severity = "warn"
+    return {
+        "component": row.get("component") or component,
+        "status": status,
+        "message_count": int(row.get("message_count") or 0),
+        "kline_count": int(row.get("kline_count") or 0),
+        "last_message_at": row.get("last_message_at") or "",
+        "last_kline_at": row.get("last_kline_at") or "",
+        "last_error": last_error,
+        "updated_at": row.get("updated_at") or "",
+        "details": details,
+        "severity": severity,
+    }
+
+
+def realtime_recovery_rows(snapshot: dict[str, object]) -> pd.DataFrame:
+    details = _json_dict(snapshot.get("details"))
+    error = _json_dict(details.get("error"))
+    rows = []
+    if error:
+        rows.append({"项目": "错误类型", "值": error.get("category", "network_error")})
+        rows.append({"项目": "错误代码", "值": error.get("code", "n/a")})
+        rows.append({"项目": "是否可重试", "值": error.get("retryable", "n/a")})
+        rows.append({"项目": "摘要", "值": error.get("summary", snapshot.get("last_error", ""))})
+    rows.extend([
+        {"项目": "当前尝试", "值": details.get("attempt") or details.get("attempts") or "n/a"},
+        {"项目": "下次尝试", "值": details.get("next_attempt", "n/a")},
+        {"项目": "最大重连", "值": details.get("max_reconnects", "n/a")},
+        {"项目": "等待秒数", "值": details.get("sleep_seconds", "n/a")},
+    ])
+    return pd.DataFrame(rows)
+
+
 def paper_overview() -> dict[str, object]:
     paper_db = resolve_path(cfg.get("paper", {}).get("database_path", "data/database/paper_trading.sqlite"))
     counts = sqlite_table_counts(paper_db)
@@ -233,6 +305,7 @@ def docs_overview() -> pd.DataFrame:
         ("路线图", "docs/ROADMAP.md"),
         ("OKX实时行情", "docs/OKX_REALTIME_MARKET_DATA.md"),
         ("GitHub资料", "docs/GITHUB_REPOSITORY_PROFILE.md"),
+        ("V3.0.7发布说明", "RELEASE_NOTES_V3_0_7.md"),
         ("V3.0.6发布说明", "RELEASE_NOTES_V3_0_6.md"),
     ]
     return pd.DataFrame([_path_row(label, path) for label, path in docs])
@@ -597,6 +670,27 @@ elif page == "实时行情":
     inst_id = realtime_cfg.get("inst_id") or cfg.get("symbol", {}).get("okx_inst_id", "BTC-USDT-SWAP")
     channels = realtime_cfg.get("channels", ["candle1m", "candle4H"]) or ["candle1m"]
     db_path = resolve_path(realtime_cfg.get("database_path", "data/database/realtime_market.sqlite"))
+    component = str(realtime_cfg.get("status_component", "okx_realtime_ws"))
+
+    st.markdown("### 连接健康")
+    snapshot = realtime_health_snapshot(db_path, component=component)
+    h1, h2, h3, h4 = st.columns(4)
+    h1.metric("状态", str(snapshot.get("status", "n/a")))
+    h2.metric("消息数", snapshot.get("message_count", 0))
+    h3.metric("K线数", snapshot.get("kline_count", 0))
+    h4.metric("最近更新", str(snapshot.get("updated_at") or "n/a"))
+    last_error = str(snapshot.get("last_error") or "")
+    if snapshot.get("severity") == "error":
+        st.warning(last_error or "实时连接最近发生错误。")
+        recovery = realtime_recovery_rows(snapshot)
+        if not recovery.empty:
+            st.dataframe(recovery, use_container_width=True, hide_index=True)
+        if "10054" in last_error or "connection_reset" in last_error:
+            st.info("10054 通常表示远端或中间网络主动断开连接。系统会把它作为可恢复网络错误记录，并按重连参数继续尝试。")
+    elif snapshot.get("severity") == "warn":
+        st.info("实时连接处于关闭或重连状态，可先运行下方采样按钮确认网络。")
+    else:
+        st.success("实时连接状态正常或尚未发现错误。")
 
     st.markdown("### 实时数据库")
     st.write(str(db_path))
@@ -642,12 +736,34 @@ elif page == "实时行情":
 
     st.markdown("### 安全运行按钮")
     sample_messages = st.number_input("采样消息数", min_value=1, max_value=200, value=5, step=1)
+    sample_reconnects = st.number_input(
+        "采样重连次数",
+        min_value=0,
+        max_value=20,
+        value=int(realtime_cfg.get("max_reconnects", 3)),
+        step=1,
+    )
+    reconnect_sleep = st.number_input(
+        "重连等待秒数",
+        min_value=1,
+        max_value=60,
+        value=int(realtime_cfg.get("reconnect_sleep_seconds", 3)),
+        step=1,
+    )
+    ignore_env_proxy = st.checkbox("忽略系统代理", value=False)
+    sample_args = [
+        "--max-messages", str(int(sample_messages)),
+        "--reconnects", str(int(sample_reconnects)),
+        "--reconnect-sleep-seconds", str(int(reconnect_sleep)),
+    ]
+    if ignore_env_proxy:
+        sample_args.append("--no-env-proxy")
     c1, c2, c3 = st.columns(3)
     with c1:
         run_button(
             "采样实时行情",
             "run_okx_realtime_listener.py",
-            ["--max-messages", str(int(sample_messages))],
+            sample_args,
             help_text="采样接收少量公开行情消息后自动停止。",
             key="realtime_sample_messages",
             artifacts=[("实时数据库", db_path)],
@@ -661,6 +777,12 @@ elif page == "实时行情":
             help_text="仅合并已确认的4H K线。",
             artifacts=[("原始K线", cfg.get("data", {}).get("raw_path", "data/raw/OKX_BTC_USDT_SWAP_4h.parquet"))],
         )
+    run_button(
+        "OKX REST连通性诊断",
+        "check_okx_connectivity.py",
+        help_text="测试 OKX public/time、ticker、candles、history-candles。",
+        timeout_seconds=120,
+    )
 
 
 elif page == "数据质量与真实性":

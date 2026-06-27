@@ -17,6 +17,9 @@ def main() -> None:
     parser.add_argument("--url", default=None, help="Override OKX WebSocket URL.")
     parser.add_argument("--proxy", default=None, help="Optional proxy URL, e.g. http://127.0.0.1:7890.")
     parser.add_argument("--max-messages", type=int, default=None, help="Stop after this many WS messages. Omit for long-running mode.")
+    parser.add_argument("--reconnects", type=int, default=None, help="Override realtime.max_reconnects.")
+    parser.add_argument("--reconnect-sleep-seconds", type=float, default=None, help="Seconds to wait before reconnecting.")
+    parser.add_argument("--no-env-proxy", action="store_true", help="Ignore HTTP_PROXY/HTTPS_PROXY environment variables.")
     parser.add_argument("--no-auto-merge", action="store_true", help="Disable confirmed 4H realtime-to-history merge.")
     args = parser.parse_args()
 
@@ -42,13 +45,17 @@ def main() -> None:
         channels=list(channels),
         ws_url=args.url or realtime_cfg.get("ws_url"),
         proxy_url=args.proxy,
-        use_env_proxy=bool(realtime_cfg.get("use_env_proxy", True)),
+        use_env_proxy=bool(realtime_cfg.get("use_env_proxy", True)) and not args.no_env_proxy,
         prefer_base_volume=bool(realtime_cfg.get("prefer_base_volume", True)),
         max_messages=args.max_messages,
         component=str(realtime_cfg.get("status_component", "okx_realtime_ws")),
         auto_merge_config=auto_merge_config,
-        reconnects=int(realtime_cfg.get("max_reconnects", 0)),
-        reconnect_sleep_seconds=float(realtime_cfg.get("reconnect_sleep_seconds", 3.0)),
+        reconnects=int(args.reconnects if args.reconnects is not None else realtime_cfg.get("max_reconnects", 0)),
+        reconnect_sleep_seconds=float(
+            args.reconnect_sleep_seconds
+            if args.reconnect_sleep_seconds is not None
+            else realtime_cfg.get("reconnect_sleep_seconds", 3.0)
+        ),
     )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
 

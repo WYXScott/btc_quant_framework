@@ -159,13 +159,29 @@ def safe_run_script(script_name: str, extra_args: list[str] | None = None, timeo
     if not script_path.exists():
         return 2, f"Script not found: {script_path}"
     cmd = [sys.executable, str(script_path)] + list(extra_args or [])
-    proc = subprocess.run(
-        cmd,
-        cwd=project_root(),
-        capture_output=True,
-        text=True,
-        timeout=timeout_seconds,
-    )
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=project_root(),
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        output = exc.stdout or ""
+        if isinstance(output, bytes):
+            output = output.decode("utf-8", errors="replace")
+        stderr = exc.stderr or ""
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        if stderr:
+            output += "\n[stderr]\n" + stderr
+        output += f"\n[ui]\nTimed out after {timeout_seconds} seconds: {' '.join(cmd)}"
+        return 124, output.strip()
+    except OSError as exc:
+        return 125, f"Failed to start script: {exc!r}\nCommand: {' '.join(cmd)}"
+    except Exception as exc:
+        return 126, f"Unexpected UI runner error: {exc!r}\nCommand: {' '.join(cmd)}"
     output = (proc.stdout or "")
     if proc.stderr:
         output += "\n[stderr]\n" + proc.stderr

@@ -52,5 +52,6 @@ This directory is the working manual for BTC Quant Framework. It is organized by
 
 ## Release Notes
 
+- [V3.0.7 Realtime Recovery And WebUI Health](../RELEASE_NOTES_V3_0_7.md)
 - [V3.0.6 WebUI Workflow Center](../RELEASE_NOTES_V3_0_6.md)
 - [V3.0.5 OKX Realtime Market Data](../RELEASE_NOTES_V3_0_5.md)

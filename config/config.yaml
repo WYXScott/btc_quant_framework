@@ -1,6 +1,6 @@
 project:
   name: btc_quant_framework
-  version: 3.0.6
+  version: 3.0.7
   timezone: UTC
 
 exchange:
@@ -530,6 +530,7 @@ ui:
   allowed_button_scripts:
     - deploy_check.py
     - status_panel.py
+    - check_okx_connectivity.py
     - download_ohlcv.py
     - run_okx_realtime_listener.py
     - run_realtime_status.py
