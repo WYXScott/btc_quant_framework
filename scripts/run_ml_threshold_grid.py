@@ -14,7 +14,7 @@ def main() -> None:
     dataset = load_parquet(resolve_path(cfg["data"]["dataset_path"]))
     feature_columns = get_model_feature_columns(dataset)
     rob_cfg = cfg.get("robustness", {})
-    wf_cfg = WalkForwardConfig(**cfg.get("walk_forward", {}))
+    wf_cfg = WalkForwardConfig.from_config(cfg)
     model_name = cfg.get("model_strategy_matrix", {}).get("models", ["extra_trees"])[0]
     prob_col = f"prob_up_wf_{model_name}"
     pred_df, folds = walk_forward_predict(

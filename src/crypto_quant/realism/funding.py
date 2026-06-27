@@ -7,12 +7,13 @@ from typing import Any
 import ccxt
 import pandas as pd
 
-from crypto_quant.data.storage import load_parquet, merge_ohlcv, save_parquet
+from crypto_quant.data.storage import ensure_utc_datetime_index, load_parquet, merge_ohlcv, save_parquet
 
 
-def create_funding_exchange(exchange_name: str = "binance", rate_limit: bool = True):
+def create_funding_exchange(exchange_name: str = "okx", market_type: str = "swap", rate_limit: bool = True):
     klass = getattr(ccxt, exchange_name)
-    return klass({"enableRateLimit": rate_limit, "options": {"defaultType": "future"}})
+    default_type = market_type or ("swap" if str(exchange_name).lower().startswith("okx") else "future")
+    return klass({"enableRateLimit": rate_limit, "options": {"defaultType": default_type}})
 
 
 def _normalize_funding_rows(rows: list[dict[str, Any]]) -> pd.DataFrame:
@@ -72,13 +73,14 @@ def update_funding_rate_file(
     since_iso: str,
     output_path: str | Path,
     *,
+    market_type: str = "swap",
     rate_limit: bool = True,
 ) -> pd.DataFrame:
     output_path = Path(output_path)
-    exchange = create_funding_exchange(exchange_name, rate_limit=rate_limit)
+    exchange = create_funding_exchange(exchange_name, market_type=market_type, rate_limit=rate_limit)
     existing = None
     if output_path.exists():
-        existing = load_parquet(output_path)
+        existing = ensure_utc_datetime_index(load_parquet(output_path))
         since_ms = int(pd.Timestamp(existing.index.max()).tz_convert("UTC").timestamp() * 1000) + 1 if not existing.empty else exchange.parse8601(since_iso)
     else:
         since_ms = exchange.parse8601(since_iso)

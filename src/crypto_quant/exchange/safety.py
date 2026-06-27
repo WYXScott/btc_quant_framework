@@ -6,7 +6,7 @@ from typing import Any
 
 @dataclass(frozen=True)
 class ExecutionSafetyConfig:
-    environment: str = "testnet"          # testnet | live
+    environment: str = "demo"             # demo | testnet | sandbox | live
     default_dry_run: bool = True
     allow_live_trading: bool = False
     require_confirmation_phrase: str = "I_UNDERSTAND_TESTNET_ORDER"
@@ -45,7 +45,7 @@ class ExecutionSafetyGuard:
 
     def validate_environment(self) -> None:
         env = self.cfg.environment.lower()
-        if env not in {"testnet", "live"}:
+        if env not in {"demo", "testnet", "sandbox", "live"}:
             raise ValueError(f"Unsupported broker environment: {self.cfg.environment}")
         if env == "live" and not self.cfg.allow_live_trading:
             raise PermissionError(

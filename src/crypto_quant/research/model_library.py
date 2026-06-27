@@ -48,11 +48,12 @@ def evaluate_model_library(
     output_dir: str | Path,
     thresholds: Iterable[float] = (0.5, 0.55, 0.58, 0.6, 0.65),
     calibration_bins: int = 10,
+    purge_bars: int = 0,
 ) -> pd.DataFrame:
     feature_columns = list(feature_columns)
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    train, valid, test = time_split(dataset, train_end=train_end, valid_end=valid_end)
+    train, valid, test = time_split(dataset, train_end=train_end, valid_end=valid_end, purge_bars=purge_bars)
     rows: list[dict[str, object]] = []
 
     for name in model_names:
@@ -62,6 +63,10 @@ def evaluate_model_library(
         X_train, y_train = train[feature_columns], train["label_up"]
         X_valid, y_valid = valid[feature_columns], valid["label_up"]
         X_test, y_test = test[feature_columns], test["label_up"]
+        if train.empty:
+            raise ValueError("Training split is empty after applying train_end and purge_bars.")
+        if y_train.nunique(dropna=True) < 2:
+            raise ValueError("Training split contains a single label class; adjust dates or label threshold.")
         model.fit(X_train, y_train)
 
         split_frames = []

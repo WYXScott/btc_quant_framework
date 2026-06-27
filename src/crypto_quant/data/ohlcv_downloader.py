@@ -9,7 +9,7 @@ import ccxt
 import pandas as pd
 import requests
 
-from crypto_quant.data.storage import load_parquet, merge_ohlcv, save_parquet
+from crypto_quant.data.storage import ensure_utc_datetime_index, load_parquet, merge_ohlcv, save_parquet
 from crypto_quant.utils.logger import get_logger
 from crypto_quant.data.okx_downloader import update_okx_ohlcv_file
 
@@ -236,7 +236,7 @@ def update_ohlcv_file(
     since_iso: str,
     output_path: str | Path,
     raw_symbol: str | None = None,
-    downloader: str = "binance_native",
+    downloader: str = "okx_native",
     downloader_config: dict[str, Any] | None = None,
 ) -> pd.DataFrame:
     output_path = Path(output_path)
@@ -244,7 +244,7 @@ def update_ohlcv_file(
 
     existing: Optional[pd.DataFrame] = None
     if output_path.exists():
-        existing = load_parquet(output_path)
+        existing = ensure_utc_datetime_index(load_parquet(output_path))
         if not existing.empty:
             last_timestamp = pd.Timestamp(existing.index.max()).tz_convert("UTC")
             since_ms = int(last_timestamp.timestamp() * 1000) + 1
@@ -254,7 +254,7 @@ def update_ohlcv_file(
     else:
         since_ms = int(pd.Timestamp(since_iso).timestamp() * 1000)
 
-    selected = (downloader or "binance_native").lower()
+    selected = (downloader or "okx_native").lower()
     if selected == "okx_native" or (selected == "auto" and exchange_name.lower().startswith("okx")):
         inst_id = downloader_config.get("inst_id") or raw_symbol or symbol
         new_df = update_okx_ohlcv_file(

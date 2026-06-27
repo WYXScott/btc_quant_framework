@@ -43,7 +43,7 @@ class RealtimeKline:
 
 
 def utc_now_iso() -> str:
-    return pd.Timestamp.utcnow().isoformat()
+    return pd.Timestamp.now(tz='UTC').isoformat()
 
 
 def okx_channel_to_timeframe(channel: str) -> str:
@@ -461,6 +461,10 @@ def merge_realtime_ohlcv_file(
     channel: str,
     output_path: str | Path | None = None,
     confirmed_only: bool = True,
+    validate_timeframe: str | None = None,
+    quality_config: dict[str, Any] | None = None,
+    quality_output_dir: str | Path | None = None,
+    require_quality_pass: bool = False,
 ) -> pd.DataFrame:
     historical_path = Path(historical_path)
     output_path = Path(output_path) if output_path is not None else historical_path
@@ -471,6 +475,35 @@ def merge_realtime_ohlcv_file(
         confirmed_only=confirmed_only,
     )
     merged = merge_ohlcv(existing, realtime)
+
+    # Validate before writing so a malformed realtime candle cannot silently
+    # contaminate the historical research parquet. The default remains backward
+    # compatible for unit tests, while scripts pass the project quality config.
+    if validate_timeframe:
+        from crypto_quant.data.quality import run_ohlcv_quality_checks, save_quality_artifacts
+
+        qc = quality_config or {}
+        report, issues = run_ohlcv_quality_checks(
+            merged,
+            timeframe=str(validate_timeframe),
+            max_abs_log_return=float(qc.get("max_abs_log_return", 0.20)),
+            zscore_threshold=float(qc.get("zscore_threshold", 8.0)),
+            max_range_pct=float(qc.get("max_range_pct", 0.35)),
+            max_zero_volume_fraction=float(qc.get("max_zero_volume_fraction", 0.01)),
+            allow_incomplete_latest_bar=bool(qc.get("allow_incomplete_latest_bar", True)),
+        )
+        report["context"] = "realtime_merge"
+        report["historical_path"] = str(historical_path)
+        report["output_path"] = str(output_path)
+        report["realtime_rows"] = int(len(realtime))
+        if quality_output_dir is not None:
+            save_quality_artifacts(report, issues, quality_output_dir)
+        if require_quality_pass and report.get("status") != "pass":
+            raise ValueError(
+                "Merged OHLCV failed quality gate; output was not written. "
+                f"status={report.get('status')} critical_count={report.get('critical_count')}"
+            )
+
     save_parquet(merged, output_path)
     logger.info(
         "Merged historical=%s realtime=%s rows into %s",
@@ -520,14 +553,31 @@ def run_okx_realtime_listener(
             return
         if not any(k.channel == merge_channel and k.confirm for k in klines):
             return
-        merge_realtime_ohlcv_file(
-            historical_path=auto_merge_config["historical_path"],
-            db_path=db_path,
-            inst_id=inst_id,
-            channel=merge_channel,
-            output_path=auto_merge_config.get("output_path"),
-            confirmed_only=bool(auto_merge_config.get("confirmed_only", True)),
-        )
+        try:
+            merge_realtime_ohlcv_file(
+                historical_path=auto_merge_config["historical_path"],
+                db_path=db_path,
+                inst_id=inst_id,
+                channel=merge_channel,
+                output_path=auto_merge_config.get("output_path"),
+                confirmed_only=bool(auto_merge_config.get("confirmed_only", True)),
+                validate_timeframe=auto_merge_config.get("timeframe"),
+                quality_config=auto_merge_config.get("quality_config"),
+                quality_output_dir=auto_merge_config.get("quality_output_dir"),
+                require_quality_pass=bool(auto_merge_config.get("require_quality_pass", False)),
+            )
+        except Exception as exc:
+            store.update_status(
+                component=component,
+                inst_id=inst_id,
+                channels=channels,
+                status="merge_error",
+                last_error=f"realtime_merge_failed: {type(exc).__name__}: {exc}",
+                message_count=counts["messages"],
+                kline_count=counts["klines"],
+                details={"url": ws_url, "attempt": attempts, "max_reconnects": max_reconnects, "merge_channel": merge_channel},
+            )
+            logger.error("Realtime OHLCV merge failed; historical output was not updated: %r", exc)
 
     def on_open(ws):
         nonlocal last_error_info

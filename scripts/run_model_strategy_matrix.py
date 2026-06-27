@@ -16,13 +16,7 @@ def main() -> None:
     feature_columns = get_model_feature_columns(dataset)
     matrix_cfg = cfg.get("model_strategy_matrix", {})
     models = matrix_cfg.get("models") or available_models()
-    wf_cfg = WalkForwardConfig(
-        train_window_days=cfg["walk_forward"]["train_window_days"],
-        test_window_days=cfg["walk_forward"]["test_window_days"],
-        min_train_bars=cfg["walk_forward"]["min_train_bars"],
-        start=cfg["walk_forward"].get("start"),
-        end=cfg["walk_forward"].get("end"),
-    )
+    wf_cfg = WalkForwardConfig.from_config(cfg)
     out_dir = resolve_path(matrix_cfg.get("output_path", "reports/model_strategy_matrix"))
     summary = run_model_strategy_matrix(
         dataset=dataset,

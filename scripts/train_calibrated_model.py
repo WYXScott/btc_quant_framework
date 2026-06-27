@@ -30,6 +30,7 @@ def main() -> None:
         model_type=cfg.get("model", {}).get("type", "extra_trees_classifier"),
         calibration_method=calibration_cfg.get("method", "isotonic"),
         bins=int(calibration_cfg.get("bins", 10)),
+        purge_bars=int(cfg.get("labels", {}).get("horizon_bars", 0)),
     )
 
     metrics = result["metrics"]

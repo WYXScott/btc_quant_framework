@@ -30,18 +30,20 @@ The framework now supports three operating modes:
 | Workflow buttons | Streamlit **流程中心** | Guided manual operation without memorizing commands. |
 | Managed services | Streamlit **服务控制台** / `manage_services.py` | Long-running local listeners and paper loops. |
 
-This is still a local research and paper-trading framework. It is not a production hosted trading system.
+This is still a local research and paper-trading framework. It is not a production hosted trading system. OKX order execution is intentionally not implemented; the OKX-focused default remains `execution.mode: local_paper`.
 
 ## Stability Improvements
 
-V3.1.0 improves stability in four ways:
+V3.1.0 improves stability in several ways:
 
 - Long-running tasks now have explicit process status files.
 - Logs are centralized under `logs/services`.
-- The WebUI can stop stale or unwanted background processes.
-- `run_stability_check.py` validates managed service configuration.
+- The WebUI can stop verified managed-service processes.
+- Stop/restart refuses to kill a recorded PID unless the process command line still matches the configured service script.
+- `run_stability_check.py` validates managed service configuration, script scope, safety switches, execution-provider compatibility and the data-quality hard gate.
+- The paper ensemble loop stops after repeated consecutive failures instead of silently continuing forever.
 
-The service manager also detects when a saved PID is no longer running and marks it as `exited_or_stale`.
+The service manager marks missing processes as `exited_or_stale` and PID command mismatches as `stale_pid_mismatch`.
 
 ## Recommended Workflow
 
@@ -107,7 +109,7 @@ This will make the front page more trustworthy.
 
 Execution should remain outside the service console until the system has:
 
-- dedicated OKX demo adapter
+- dedicated OKX demo/private execution adapter
 - strict dry-run proof
 - private API permission audit
 - manual operator approval

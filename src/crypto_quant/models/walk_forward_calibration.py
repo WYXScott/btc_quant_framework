@@ -46,12 +46,14 @@ class WalkForwardCalibrationConfig:
     model_type: str = "extra_trees"
     calibration_method: str = "isotonic"
     bins: int = 10
+    label_horizon_bars: int = 0
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> "WalkForwardCalibrationConfig":
         c = cfg.get("walk_forward_calibration", {})
         wf = cfg.get("walk_forward", {})
         cal = cfg.get("calibration", {})
+        labels = cfg.get("labels", {})
         return cls(
             train_window_days=int(c.get("train_window_days", wf.get("train_window_days", 1095))),
             calibration_window_days=int(c.get("calibration_window_days", 180)),
@@ -64,6 +66,7 @@ class WalkForwardCalibrationConfig:
             model_type=str(c.get("model_type", cfg.get("model", {}).get("type", "extra_trees"))),
             calibration_method=str(c.get("method", cal.get("method", "isotonic"))),
             bins=int(c.get("bins", cal.get("bins", 10))),
+            label_horizon_bars=int(c.get("label_horizon_bars", labels.get("horizon_bars", 0))),
         )
 
 
@@ -80,6 +83,15 @@ def _as_utc_timestamp(value: str | None) -> pd.Timestamp | None:
 
 def _clip_probability(prob: np.ndarray, eps: float = 1e-6) -> np.ndarray:
     return np.clip(np.asarray(prob, dtype=float), eps, 1.0 - eps)
+
+
+def _drop_tail_for_purge(df: pd.DataFrame, purge_bars: int) -> pd.DataFrame:
+    purge = max(int(purge_bars), 0)
+    if purge == 0:
+        return df
+    if len(df) <= purge:
+        return df.iloc[0:0].copy()
+    return df.iloc[:-purge].copy()
 
 
 def _apply_calibrator(raw_prob: np.ndarray, calibrator: object | None, method: str) -> np.ndarray:
@@ -149,6 +161,8 @@ def walk_forward_calibrated_predict(
         train = data.loc[(data.index >= train_start) & (data.index < calibration_start)].copy()
         cal = data.loc[(data.index >= calibration_start) & (data.index < test_start)].copy()
         test = data.loc[(data.index >= test_start) & (data.index < test_end)].copy()
+        train = _drop_tail_for_purge(train, cfg.label_horizon_bars)
+        cal = _drop_tail_for_purge(cal, cfg.label_horizon_bars)
 
         skip_reason = None
         if len(train) < cfg.min_train_bars:
@@ -173,6 +187,7 @@ def walk_forward_calibrated_predict(
                 "train_bars": len(train),
                 "calibration_bars": len(cal),
                 "test_bars": len(test),
+                "label_horizon_bars": int(cfg.label_horizon_bars),
             })
             fold_id += 1
             test_start = test_end
@@ -215,6 +230,7 @@ def walk_forward_calibrated_predict(
             "train_bars": len(train),
             "calibration_bars": len(cal),
             "test_bars": len(test),
+            "label_horizon_bars": int(cfg.label_horizon_bars),
             "calibration_positive_rate": float(cal[label_col].mean()),
             "test_positive_rate": float(test[label_col].mean()),
             "calibration_raw_brier": raw_cal_metrics["brier_score"],

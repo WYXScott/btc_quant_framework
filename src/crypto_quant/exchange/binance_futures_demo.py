@@ -33,6 +33,13 @@ class BinanceFuturesDemoBroker:
 
     def __init__(self, cfg: dict[str, Any], *, require_private: bool = False):
         self.cfg = cfg
+        provider = str((cfg.get("broker", {}) or {}).get("provider", (cfg.get("exchange", {}) or {}).get("name", "binanceusdm"))).lower()
+        if provider not in {"binance", "binanceusdm"}:
+            raise ValueError(
+                "BinanceFuturesDemoBroker requires broker.provider='binanceusdm' or 'binance'. "
+                f"Current provider is {provider!r}. Keep execution.mode='local_paper' for OKX-focused research, "
+                "or add a dedicated OKX execution adapter before enabling exchange orders."
+            )
         self.safety = ExecutionSafetyGuard.from_config(cfg)
         self.safety.validate_environment()
         self.exchange = create_ccxt_exchange(cfg, require_private=require_private)

@@ -327,8 +327,9 @@ class ShadowLiveReadOnlyClient:
         cfg = json.loads(json.dumps(self.cfg, default=str))
         cfg.setdefault("broker", {})
         cfg["broker"]["environment"] = "live"
-        cfg["broker"]["api_key_env"] = self.shadow_cfg.get("api_key_env", "BINANCE_LIVE_READONLY_API_KEY")
-        cfg["broker"]["secret_env"] = self.shadow_cfg.get("secret_env", "BINANCE_LIVE_READONLY_API_SECRET")
+        cfg["broker"]["api_key_env"] = self.shadow_cfg.get("api_key_env", "OKX_LIVE_READONLY_API_KEY")
+        cfg["broker"]["secret_env"] = self.shadow_cfg.get("secret_env", "OKX_LIVE_READONLY_API_SECRET")
+        cfg["broker"]["passphrase_env"] = self.shadow_cfg.get("passphrase_env", "OKX_LIVE_READONLY_API_PASSPHRASE")
         cfg.setdefault("exchange", {})
         cfg["exchange"]["testnet"] = False
         return cfg
@@ -344,8 +345,9 @@ class ShadowLiveReadOnlyClient:
             "open_order_count": 0,
             "message": "Offline preview only. No live private endpoint was queried.",
             "required_env": {
-                "api_key_env": self.shadow_cfg.get("api_key_env", "BINANCE_LIVE_READONLY_API_KEY"),
-                "secret_env": self.shadow_cfg.get("secret_env", "BINANCE_LIVE_READONLY_API_SECRET"),
+                "api_key_env": self.shadow_cfg.get("api_key_env", "OKX_LIVE_READONLY_API_KEY"),
+                "secret_env": self.shadow_cfg.get("secret_env", "OKX_LIVE_READONLY_API_SECRET"),
+                "passphrase_env": self.shadow_cfg.get("passphrase_env", "OKX_LIVE_READONLY_API_PASSPHRASE"),
             },
         }
 

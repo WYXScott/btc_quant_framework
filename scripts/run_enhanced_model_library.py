@@ -25,6 +25,7 @@ def main() -> None:
         thresholds=lib_cfg.get("thresholds", [0.5, 0.55, 0.58, 0.6, 0.65]),
         calibration_bins=cfg.get("research", {}).get("calibration_bins", cfg.get("calibration", {}).get("bins", 10)),
         include_optional_if_installed=bool(lib_cfg.get("include_optional_if_installed", True)),
+        purge_bars=int(cfg.get("labels", {}).get("horizon_bars", 0)),
     )
     print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
     print(f"feature_count={len(feature_columns)}")

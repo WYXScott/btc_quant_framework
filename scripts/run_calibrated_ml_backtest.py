@@ -3,12 +3,30 @@ from __future__ import annotations
 import json
 import _bootstrap  # noqa: F401
 
+import pandas as pd
+
 from crypto_quant.config import load_config, resolve_path
 from crypto_quant.data.storage import load_parquet
 from crypto_quant.research.signal_confidence import ConfidencePolicy, add_calibrated_probabilities, apply_confidence_policy
 from crypto_quant.backtest.dynamic_engine import DynamicExposureBacktester
 from crypto_quant.backtest.metrics import save_backtest_reports
 from crypto_quant.reporting.plots import plot_equity_curve, plot_drawdown
+
+
+def _filter_out_of_sample(df: pd.DataFrame, valid_end: str) -> pd.DataFrame:
+    out = df.copy().sort_index()
+    if not isinstance(out.index, pd.DatetimeIndex):
+        out.index = pd.to_datetime(out.index, utc=True, errors="raise")
+    elif out.index.tz is None:
+        out.index = out.index.tz_localize("UTC")
+    else:
+        out.index = out.index.tz_convert("UTC")
+    cutoff = pd.Timestamp(valid_end)
+    cutoff = cutoff.tz_localize("UTC") if cutoff.tzinfo is None else cutoff.tz_convert("UTC")
+    out = out.loc[out.index > cutoff].copy()
+    if out.empty:
+        raise RuntimeError("No out-of-sample rows after model.valid_end; adjust config dates before running calibrated ML backtest.")
+    return out
 
 
 def main() -> None:
@@ -19,6 +37,7 @@ def main() -> None:
         df,
         calibrated_model_path=resolve_path(calibration_cfg.get("calibrated_model_path", "models/btc_direction_model_calibrated.joblib")),
     )
+    df = _filter_out_of_sample(df, cfg["model"]["valid_end"])
     df = apply_confidence_policy(df, policy=ConfidencePolicy.from_config(cfg))
     bt = DynamicExposureBacktester(
         initial_equity=cfg["trading"]["initial_equity"],
