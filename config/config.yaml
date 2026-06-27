@@ -1,6 +1,6 @@
 project:
   name: btc_quant_framework
-  version: 3.0.7
+  version: 3.0.8
   timezone: UTC
 
 exchange:
@@ -529,6 +529,7 @@ ui:
   max_table_rows: 300
   allowed_button_scripts:
     - deploy_check.py
+    - run_stability_check.py
     - status_panel.py
     - check_okx_connectivity.py
     - download_ohlcv.py

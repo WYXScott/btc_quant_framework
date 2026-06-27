@@ -305,6 +305,8 @@ def docs_overview() -> pd.DataFrame:
         ("路线图", "docs/ROADMAP.md"),
         ("OKX实时行情", "docs/OKX_REALTIME_MARKET_DATA.md"),
         ("GitHub资料", "docs/GITHUB_REPOSITORY_PROFILE.md"),
+        ("V3.0.8版本收口", "docs/VERSION_STATUS_V3_0_8.md"),
+        ("V3.0.8发布说明", "RELEASE_NOTES_V3_0_8.md"),
         ("V3.0.7发布说明", "RELEASE_NOTES_V3_0_7.md"),
         ("V3.0.6发布说明", "RELEASE_NOTES_V3_0_6.md"),
     ]
@@ -350,6 +352,14 @@ def _workflow_groups() -> dict[str, list[dict[str, object]]]:
                 "label": "部署健康检查",
                 "script": "deploy_check.py",
                 "outputs": [("健康报告", deployment_cfg.get("health_report_path", "reports/deployment/health_report.json"))],
+            },
+            {
+                "label": "稳定性收口检查",
+                "script": "run_stability_check.py",
+                "outputs": [
+                    ("稳定性报告", "reports/stability/stability_report.json"),
+                    ("稳定性明细", "reports/stability/stability_checks.csv"),
+                ],
             },
             {
                 "label": "下载公开K线",
@@ -1346,6 +1356,34 @@ elif page == "流程中心":
 
 elif page == "软件审查":
     st.title("软件包审查")
+    st.markdown("### 稳定性收口")
+    stability = read_json("reports/stability/stability_report.json")
+    s1, s2, s3, s4 = st.columns(4)
+    if isinstance(stability, dict):
+        counts = stability.get("counts", {}) if isinstance(stability.get("counts"), dict) else {}
+        s1.metric("状态", stability.get("status", "n/a"))
+        s2.metric("Pass", counts.get("pass", 0))
+        s3.metric("Warn", counts.get("warn", 0))
+        s4.metric("Fail", counts.get("fail", 0))
+    else:
+        s1.metric("状态", "未生成")
+        s2.metric("Pass", 0)
+        s3.metric("Warn", 0)
+        s4.metric("Fail", 0)
+    checks = read_csv("reports/stability/stability_checks.csv")
+    if not checks.empty:
+        st.dataframe(checks, use_container_width=True, hide_index=True)
+    else:
+        st.info("尚未生成稳定性检查报告。")
+    run_button(
+        "运行稳定性检查",
+        "run_stability_check.py",
+        artifacts=[
+            ("稳定性报告", "reports/stability/stability_report.json"),
+            ("稳定性明细", "reports/stability/stability_checks.csv"),
+        ],
+    )
+
     st.markdown("### 核心功能覆盖")
     coverage = pd.DataFrame([
         {"模块": "数据", "状态": "已具备", "说明": "CCXT公开行情下载、Parquet存储、增量更新接口"},
