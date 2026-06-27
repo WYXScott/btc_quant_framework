@@ -1,16 +1,14 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 import json
-import os
 from pathlib import Path
 import sqlite3
-from typing import Any, Iterable
+from typing import Any
 
 import pandas as pd
 
-from crypto_quant.config import resolve_path
 from crypto_quant.exchange.ccxt_factory import create_ccxt_exchange
 
 

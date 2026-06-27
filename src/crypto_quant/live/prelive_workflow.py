@@ -1,20 +1,19 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 import html
 import json
 import os
 from pathlib import Path
 import sqlite3
-from typing import Any, Iterable
+from typing import Any
 
 import pandas as pd
 
 from crypto_quant.live.live_safety import (
     HardCircuitBreaker,
     LiveSafetyGate,
-    LiveSafetyStore,
     PreLiveValidationBuilder,
     utc_now_iso,
 )
@@ -872,7 +871,7 @@ def build_recommendations(status: str, checks: list[ReviewCheckItem]) -> list[st
     warnings = [c for c in checks if c.status == WARN]
     if blockers:
         recs.append("Do not enable live trading. Resolve all critical blockers first.")
-        recs.extend([f"Resolve blocker: {c.name} — {c.message}" for c in blockers[:8]])
+        recs.extend([f"Resolve blocker: {c.name} 鈥?{c.message}" for c in blockers[:8]])
     if warnings:
         recs.append("Review warnings before extending Demo/Testnet or shadow-live duration.")
     if status == PASS:
@@ -945,7 +944,7 @@ def render_prelive_review_html(report: PreLiveReviewReport) -> str:
 </head>
 <body>
   <h1>BTC Quant Pre-live Operator Console</h1>
-  <p class="sub">Generated at {html.escape(report.timestamp_utc)} · Overall status: {_status_badge(report.status)} · Decision: <strong>{html.escape(report.decision)}</strong></p>
+  <p class="sub">Generated at {html.escape(report.timestamp_utc)} 路 Overall status: {_status_badge(report.status)} 路 Decision: <strong>{html.escape(report.decision)}</strong></p>
   <div class="warning">This console does not authorize automatic live trading. It is a human review package for a possible small-live launch.</div>
   <div class="card"><h2>Summary</h2><table>{summary_rows}</table></div>
   <div class="card"><h2>Recommendations</h2><ul>{rec_items}</ul></div>
@@ -974,7 +973,7 @@ def render_shadow_drift_trend_html(summary: dict[str, Any], df: pd.DataFrame) ->
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Shadow Drift Trend</title>
 <style>body{{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;margin:28px;color:#101828}}table{{border-collapse:collapse;width:100%;margin:14px 0 28px}}th,td{{border:1px solid #d0d5dd;padding:8px 10px;text-align:left}}th{{background:#f2f4f7}}.card{{border:1px solid #d0d5dd;border-radius:14px;padding:16px 18px;margin:16px 0}}</style></head>
-<body><h1>Shadow Drift Trend</h1><p>Generated at {html.escape(str(summary.get('timestamp_utc','')))} · Status: {_status_badge(str(summary.get('status', WARN)))}</p>
+<body><h1>Shadow Drift Trend</h1><p>Generated at {html.escape(str(summary.get('timestamp_utc','')))} 路 Status: {_status_badge(str(summary.get('status', WARN)))}</p>
 <div class="card"><h2>Metrics</h2><table>{metric_rows}</table></div>
 <div class="card"><h2>Recent Reports</h2><table>{rows}</table></div>
 </body></html>"""

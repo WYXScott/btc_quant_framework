@@ -81,7 +81,7 @@ def build_sequence_dataset(
     data.index = _ensure_utc_index(data.index)
     data = data.replace([np.inf, -np.inf], np.nan)
     required_cols = feature_columns + [label_col]
-    optional_cols = [c for c in [future_return_col, close_col] if c in data.columns]
+    _ = [c for c in [future_return_col, close_col] if c in data.columns]  # optional cols, not yet consumed
     if dropna:
         data = data.dropna(subset=required_cols)
 

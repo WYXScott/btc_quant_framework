@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 from typing import Iterable
@@ -6,7 +6,7 @@ from typing import Iterable
 import pandas as pd
 
 from crypto_quant.backtest.engine import LeveragedBacktester
-from crypto_quant.backtest.metrics import performance_summary, save_backtest_reports
+from crypto_quant.backtest.metrics import save_backtest_reports
 from crypto_quant.backtest.trades import extract_long_trades, trade_summary
 from crypto_quant.reporting.plots import plot_equity_curve, plot_drawdown
 from crypto_quant.strategy.library import build_strategy_signal, get_strategy_spec
