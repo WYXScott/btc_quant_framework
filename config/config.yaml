@@ -1,6 +1,6 @@
 project:
   name: btc_quant_framework
-  version: 3.0.5
+  version: 3.0.6
   timezone: UTC
 
 exchange:
@@ -553,6 +553,7 @@ ui:
     - run_ensemble_strategy.py
     - run_paper_ensemble_diagnostics.py
     - paper_init.py
+    - paper_ensemble_replay_dataset.py
     - paper_ensemble_preview.py
     - shadow_drift_check.py
     - prelive_operator_console.py

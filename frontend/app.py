@@ -82,7 +82,7 @@ page = st.sidebar.radio(
         "策略研究",
         "模拟盘",
         "风控与只读影子",
-        "一键流程",
+        "流程中心",
         "软件审查",
     ],
 )
@@ -94,6 +94,8 @@ broker_live = bool(cfg.get("broker", {}).get("safety", {}).get("allow_live_tradi
 st.sidebar.metric("Live Gate", "Blocked" if not (live_enabled and ui_live and broker_live) else "Enabled")
 st.sidebar.caption("Research · Paper · Shadow")
 
+RUN_HISTORY_LIMIT = 8
+
 
 def show_file_table():
     status_df = collect_core_status(cfg)
@@ -102,15 +104,52 @@ def show_file_table():
         st.dataframe(status_df[["path", "exists", "size_kb", "modified"]], use_container_width=True, hide_index=True)
 
 
-def run_button(label: str, script: str, args: list[str] | None = None, help_text: str | None = None):
-    if st.button(label, help=help_text, use_container_width=True):
+def _button_key(label: str, script: str, args: list[str] | None = None) -> str:
+    suffix = "_".join(list(args or []))
+    return f"run::{script}::{label}::{suffix}"
+
+
+def _record_run(script: str, args: list[str], code: int, output: str, elapsed_seconds: float) -> None:
+    history = st.session_state.setdefault("run_history", [])
+    history.insert(
+        0,
+        {
+            "time": pd.Timestamp.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "script": script,
+            "args": " ".join(args),
+            "code": code,
+            "seconds": round(elapsed_seconds, 1),
+            "output": output[-12000:],
+        },
+    )
+    del history[RUN_HISTORY_LIMIT:]
+
+
+def run_button(
+    label: str,
+    script: str,
+    args: list[str] | None = None,
+    help_text: str | None = None,
+    key: str | None = None,
+    artifacts: list[str | Path | tuple[str, str | Path]] | None = None,
+    timeout_seconds: int = 900,
+):
+    button_key = key or _button_key(label, script, args)
+    if st.button(label, help=help_text, use_container_width=True, key=button_key):
+        run_args = list(args or [])
         with st.spinner(f"运行 {script} ..."):
-            code, out = safe_run_script(script, args)
+            started = pd.Timestamp.utcnow()
+            code, out = safe_run_script(script, run_args, timeout_seconds=timeout_seconds)
+            elapsed = (pd.Timestamp.utcnow() - started).total_seconds()
+        _record_run(script, run_args, code, out or "", elapsed)
         if code == 0:
-            st.success(f"{script} 运行完成")
+            st.success(f"{script} 运行完成，用时 {elapsed:.1f}s")
         else:
             st.error(f"{script} 返回码：{code}")
-        st.code(out or "<no output>", language="text")
+        if artifacts:
+            st.dataframe(artifact_status_table(artifacts), use_container_width=True, hide_index=True)
+        with st.expander("运行输出", expanded=code != 0):
+            st.code(out or "<no output>", language="text")
 
 
 def _state(ok: bool, ready: str = "就绪", missing: str = "待处理") -> str:
@@ -194,8 +233,244 @@ def docs_overview() -> pd.DataFrame:
         ("路线图", "docs/ROADMAP.md"),
         ("OKX实时行情", "docs/OKX_REALTIME_MARKET_DATA.md"),
         ("GitHub资料", "docs/GITHUB_REPOSITORY_PROFILE.md"),
+        ("V3.0.6发布说明", "RELEASE_NOTES_V3_0_6.md"),
     ]
     return pd.DataFrame([_path_row(label, path) for label, path in docs])
+
+
+def artifact_status_table(artifacts: list[str | Path | tuple[str, str | Path]]) -> pd.DataFrame:
+    rows = []
+    for item in artifacts:
+        if isinstance(item, tuple):
+            label, path = item
+        else:
+            path = item
+            label = Path(path).name
+        rows.append(_path_row(str(label), path))
+    return pd.DataFrame(rows)
+
+
+def run_history_panel() -> None:
+    history = st.session_state.get("run_history", [])
+    if not history:
+        st.info("本次会话尚无运行记录。")
+        return
+    rows = [{k: v for k, v in item.items() if k != "output"} for item in history]
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    latest = history[0]
+    with st.expander(f"最近输出：{latest['script']}", expanded=False):
+        st.code(latest.get("output") or "<no output>", language="text")
+
+
+def _workflow_groups() -> dict[str, list[dict[str, object]]]:
+    data_cfg = cfg.get("data", {})
+    model_cfg = cfg.get("model", {})
+    calibration_cfg = cfg.get("calibration", {})
+    deployment_cfg = cfg.get("deployment", {})
+    paper_cfg = cfg.get("paper", {})
+    realtime_cfg = cfg.get("realtime", {})
+    operations_cfg = cfg.get("operations", {})
+    model_admission_cfg = cfg.get("model_admission", {})
+    return {
+        "基础构建": [
+            {
+                "label": "部署健康检查",
+                "script": "deploy_check.py",
+                "outputs": [("健康报告", deployment_cfg.get("health_report_path", "reports/deployment/health_report.json"))],
+            },
+            {
+                "label": "下载公开K线",
+                "script": "download_ohlcv.py",
+                "outputs": [("原始K线", data_cfg.get("raw_path", "data/raw/OKX_BTC_USDT_SWAP_4h.parquet"))],
+            },
+            {
+                "label": "检查K线质量",
+                "script": "run_data_quality_check.py",
+                "outputs": [("数据质量报告", "reports/data_quality/data_quality_report.json")],
+            },
+            {
+                "label": "构建特征与标签",
+                "script": "build_features.py",
+                "outputs": [
+                    ("特征数据", data_cfg.get("feature_path", "data/processed/OKX_BTC_USDT_SWAP_4h_features.parquet")),
+                    ("训练数据集", data_cfg.get("dataset_path", "data/processed/OKX_BTC_USDT_SWAP_4h_dataset.parquet")),
+                ],
+            },
+            {
+                "label": "训练方向模型",
+                "script": "train_model.py",
+                "outputs": [
+                    ("模型文件", model_cfg.get("model_path", "models/btc_direction_model.joblib")),
+                    ("特征列表", model_cfg.get("feature_list_path", "models/btc_feature_columns.txt")),
+                ],
+            },
+            {
+                "label": "模型诊断",
+                "script": "run_model_diagnostics.py",
+                "outputs": [("模型诊断", "reports/model_diagnostics/model_diagnostics_summary.json")],
+            },
+        ],
+        "研究评估": [
+            {
+                "label": "训练校准模型",
+                "script": "train_calibrated_model.py",
+                "outputs": [
+                    ("校准模型", calibration_cfg.get("calibrated_model_path", "models/btc_direction_model_calibrated.joblib")),
+                    ("校准指标", "reports/calibration/calibration_metrics.json"),
+                ],
+            },
+            {
+                "label": "信号可信度报告",
+                "script": "run_signal_confidence_report.py",
+                "outputs": [("信号分层", "reports/signal_confidence/confidence_tier_table.csv")],
+            },
+            {
+                "label": "Walk-forward校准",
+                "script": "run_walk_forward_calibration.py",
+                "outputs": [("WF校准摘要", "reports/walk_forward_calibration/walk_forward_calibration_summary.json")],
+            },
+            {
+                "label": "严格CV验证",
+                "script": "run_purged_embargo_cv.py",
+                "outputs": [("CV报告", "reports/validation/purged_embargo_cv_report.json")],
+            },
+            {
+                "label": "策略参数搜索",
+                "script": "run_strategy_parameter_search.py",
+                "outputs": [("参数搜索", "reports/robustness/parameter_search/strategy_parameter_search_summary.csv")],
+            },
+            {
+                "label": "组合策略回测",
+                "script": "run_ensemble_strategy.py",
+                "outputs": [("组合策略", "reports/ensemble/ensemble_summary.csv")],
+            },
+            {
+                "label": "统一排行榜",
+                "script": "run_model_strategy_admission.py",
+                "outputs": [
+                    ("准入摘要", f"{model_admission_cfg.get('output_path', 'reports/model_admission')}/model_strategy_admission_summary.json"),
+                    ("排行榜", f"{model_admission_cfg.get('output_path', 'reports/model_admission')}/model_strategy_leaderboard.csv"),
+                ],
+            },
+        ],
+        "模拟运营": [
+            {
+                "label": "初始化模拟盘",
+                "script": "paper_init.py",
+                "args": ["--reset"],
+                "outputs": [("模拟盘数据库", paper_cfg.get("database_path", "data/database/paper_trading.sqlite"))],
+            },
+            {
+                "label": "回放组合模拟盘",
+                "script": "paper_ensemble_replay_dataset.py",
+                "args": ["--bars", "300", "--reset"],
+                "outputs": [("模拟盘数据库", paper_cfg.get("database_path", "data/database/paper_trading.sqlite"))],
+            },
+            {
+                "label": "组合策略预览",
+                "script": "paper_ensemble_preview.py",
+                "outputs": [("组合模拟盘报告", "reports/ensemble_paper/ensemble_paper_preview.csv")],
+            },
+            {
+                "label": "Paper健康检查",
+                "script": "run_paper_health_check.py",
+                "outputs": [("Paper健康", "reports/operations/paper_health_report.json")],
+            },
+            {
+                "label": "信号命中率报告",
+                "script": "run_signal_hit_rate_report.py",
+                "outputs": [("信号命中率", "reports/operations/daily_signal_hit_rate_by_tier.csv")],
+            },
+            {
+                "label": "生成运营日报",
+                "script": "run_daily_operations_report.py",
+                "outputs": [("运营摘要", f"{operations_cfg.get('output_path', 'reports/operations')}/daily_operations_summary.json")],
+            },
+            {
+                "label": "生成V3.0总报告",
+                "script": "build_v30_operations_report.py",
+                "outputs": [("V3.0报告", "reports/v3_0_operations_report/v3_0_operations_report.html")],
+            },
+        ],
+        "实时行情": [
+            {
+                "label": "采样实时行情",
+                "script": "run_okx_realtime_listener.py",
+                "args": ["--max-messages", "5"],
+                "outputs": [("实时数据库", realtime_cfg.get("database_path", "data/database/realtime_market.sqlite"))],
+            },
+            {
+                "label": "查看实时状态",
+                "script": "run_realtime_status.py",
+                "outputs": [("实时数据库", realtime_cfg.get("database_path", "data/database/realtime_market.sqlite"))],
+            },
+            {
+                "label": "合并4H实时K线",
+                "script": "merge_realtime_ohlcv.py",
+                "outputs": [("原始K线", data_cfg.get("raw_path", "data/raw/OKX_BTC_USDT_SWAP_4h.parquet"))],
+            },
+        ],
+    }
+
+
+def _step_status(step: dict[str, object]) -> str:
+    outputs = step.get("outputs", [])
+    if not outputs:
+        return "可运行"
+    table = artifact_status_table(outputs)  # type: ignore[arg-type]
+    exists = table["状态"].eq("就绪")
+    if bool(exists.all()):
+        return "已生成"
+    if bool(exists.any()):
+        return "部分生成"
+    return "待运行"
+
+
+def workflow_status_table(steps: list[dict[str, object]]) -> pd.DataFrame:
+    rows = []
+    for idx, step in enumerate(steps, start=1):
+        args = " ".join(step.get("args", [])) if isinstance(step.get("args", []), list) else ""
+        outputs = step.get("outputs", [])
+        output_labels = []
+        for item in outputs if isinstance(outputs, list) else []:
+            output_labels.append(str(item[0] if isinstance(item, tuple) else Path(str(item)).name))
+        rows.append(
+            {
+                "序号": idx,
+                "步骤": step["label"],
+                "状态": _step_status(step),
+                "脚本": step["script"],
+                "参数": args,
+                "产物": " / ".join(output_labels),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def render_workflow(name: str, steps: list[dict[str, object]], key_prefix: str) -> None:
+    table = workflow_status_table(steps)
+    done = int(table["状态"].eq("已生成").sum()) if not table.empty else 0
+    st.metric(f"{name}进度", f"{done}/{len(steps)}")
+    st.progress(done / max(len(steps), 1))
+    st.dataframe(table, use_container_width=True, hide_index=True)
+
+    options = [f"{idx + 1}. {step['label']}" for idx, step in enumerate(steps)]
+    selected_label = st.selectbox("步骤", options, key=f"{key_prefix}_select")
+    selected_idx = options.index(selected_label)
+    selected = steps[selected_idx]
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        run_button(
+            "运行选中步骤",
+            str(selected["script"]),
+            list(selected.get("args", [])),  # type: ignore[arg-type]
+            key=f"{key_prefix}_run_{selected_idx}",
+            artifacts=selected.get("outputs", []),  # type: ignore[arg-type]
+        )
+    with c2:
+        outputs = selected.get("outputs", [])
+        if outputs:
+            st.dataframe(artifact_status_table(outputs), use_container_width=True, hide_index=True)  # type: ignore[arg-type]
 
 
 if page == "总览":
@@ -228,6 +503,37 @@ if page == "总览":
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
         if realtime.get("错误"):
             st.warning(str(realtime["错误"]))
+        st.markdown("### 快速动作")
+        q1, q2, q3, q4 = st.columns(4)
+        with q1:
+            run_button(
+                "采样实时行情",
+                "run_okx_realtime_listener.py",
+                ["--max-messages", "5"],
+                key="overview_sample_realtime",
+                artifacts=[("实时数据库", cfg.get("realtime", {}).get("database_path", "data/database/realtime_market.sqlite"))],
+            )
+        with q2:
+            run_button(
+                "数据质量检查",
+                "run_data_quality_check.py",
+                key="overview_data_quality",
+                artifacts=[("数据质量报告", "reports/data_quality/data_quality_report.json")],
+            )
+        with q3:
+            run_button(
+                "生成运营日报",
+                "run_daily_operations_report.py",
+                key="overview_daily_ops",
+                artifacts=[("运营摘要", "reports/operations/daily_operations_summary.json")],
+            )
+        with q4:
+            run_button(
+                "安全检查",
+                "deploy_check.py",
+                key="overview_deploy_check",
+                artifacts=[("健康报告", cfg.get("deployment", {}).get("health_report_path", "reports/deployment/health_report.json"))],
+            )
 
     with tabs[1]:
         artifacts = [
@@ -335,13 +641,26 @@ elif page == "实时行情":
         st.dataframe(latest_sorted[display_cols].tail(100), use_container_width=True, hide_index=True)
 
     st.markdown("### 安全运行按钮")
+    sample_messages = st.number_input("采样消息数", min_value=1, max_value=200, value=5, step=1)
     c1, c2, c3 = st.columns(3)
     with c1:
-        run_button("采样实时行情", "run_okx_realtime_listener.py", ["--max-messages", "5"], help_text="采样接收少量公开行情消息后自动停止。")
+        run_button(
+            "采样实时行情",
+            "run_okx_realtime_listener.py",
+            ["--max-messages", str(int(sample_messages))],
+            help_text="采样接收少量公开行情消息后自动停止。",
+            key="realtime_sample_messages",
+            artifacts=[("实时数据库", db_path)],
+        )
     with c2:
-        run_button("查看实时状态", "run_realtime_status.py")
+        run_button("查看实时状态", "run_realtime_status.py", artifacts=[("实时数据库", db_path)])
     with c3:
-        run_button("合并4H实时K线", "merge_realtime_ohlcv.py", help_text="仅合并已确认的4H K线。")
+        run_button(
+            "合并4H实时K线",
+            "merge_realtime_ohlcv.py",
+            help_text="仅合并已确认的4H K线。",
+            artifacts=[("原始K线", cfg.get("data", {}).get("raw_path", "data/raw/OKX_BTC_USDT_SWAP_4h.parquet"))],
+        )
 
 
 elif page == "数据质量与真实性":
@@ -820,13 +1139,25 @@ elif page == "模拟盘":
                         st.line_chart(df[cols])
 
     st.markdown("### 模拟盘操作")
+    replay_bars = st.number_input("回放K线数", min_value=50, max_value=5000, value=300, step=50)
+    replay_reset = st.checkbox("重置后回放", value=True)
+    replay_args = ["--bars", str(int(replay_bars))]
+    if replay_reset:
+        replay_args.append("--reset")
     c1, c2, c3 = st.columns(3)
     with c1:
-        run_button("初始化模拟盘", "paper_init.py", ["--reset"])
+        run_button("初始化模拟盘", "paper_init.py", ["--reset"], artifacts=[("模拟盘数据库", db_path)])
     with c2:
-        run_button("组合策略预览", "paper_ensemble_preview.py")
+        run_button(
+            "回放组合模拟盘",
+            "paper_ensemble_replay_dataset.py",
+            replay_args,
+            key="paper_replay_dataset",
+            artifacts=[("模拟盘数据库", db_path)],
+        )
     with c3:
         run_button("导出组合模拟盘诊断", "run_paper_ensemble_diagnostics.py")
+    run_button("组合策略预览", "paper_ensemble_preview.py", artifacts=[("组合模拟盘报告", "reports/ensemble_paper/ensemble_paper_preview.csv")])
 
 elif page == "风控与只读影子":
     st.title("风控、安全总闸与只读影子监控")
@@ -858,37 +1189,38 @@ elif page == "风控与只读影子":
         run_button("影子漂移检查", "shadow_drift_check.py")
     run_button("生成实盘前操作台", "prelive_operator_console.py")
 
-elif page == "一键流程":
-    st.title("一键流程：研究与模拟盘")
-    st.markdown(
-        """
-        这里提供的是**安全流程入口**，不会提交真实订单。  
-        对于第一次运行，建议按从上到下顺序执行。
-        """
-    )
-    steps = [
-        ("部署健康检查", "deploy_check.py", []),
-        ("下载/更新公开K线", "download_ohlcv.py", []),
-        ("检查K线质量", "run_data_quality_check.py", []),
-        ("构建特征与标签", "build_features.py", []),
-        ("训练模型", "train_model.py", []),
-        ("模型诊断", "run_model_diagnostics.py", []),
-        ("训练校准模型", "train_calibrated_model.py", []),
-        ("信号可信度报告", "run_signal_confidence_report.py", []),
-        ("校准ML回测", "run_calibrated_ml_backtest.py", []),
-        ("Walk-forward概率校准", "run_walk_forward_calibration.py", []),
-        ("检查模型后端", "check_model_backends.py", []),
-        ("增强模型库", "run_enhanced_model_library.py", []),
-        ("WF校准模型库", "run_wf_calibration_model_library.py", []),
-        ("严格CV验证", "run_purged_embargo_cv.py", []),
-        ("策略参数搜索", "run_strategy_parameter_search.py", []),
-        ("组合策略回测", "run_ensemble_strategy.py", []),
-        ("初始化模拟盘", "paper_init.py", ["--reset"]),
-        ("组合模拟盘预览", "paper_ensemble_preview.py", []),
-        ("生成操作台", "prelive_operator_console.py", []),
-    ]
-    for label, script, args in steps:
-        run_button(label, script, args)
+elif page == "流程中心":
+    st.title("流程中心")
+    groups = _workflow_groups()
+    tabs = st.tabs(list(groups.keys()) + ["安全流水线", "运行记录"])
+    for idx, (name, steps) in enumerate(groups.items()):
+        with tabs[idx]:
+            render_workflow(name, steps, f"workflow_{idx}")
+
+    with tabs[-2]:
+        include_download = st.toggle("包含联网下载", value=False)
+        continue_on_error = st.toggle("出错后继续", value=False)
+        pipeline_args = []
+        if include_download:
+            pipeline_args.append("--include-download")
+        if continue_on_error:
+            pipeline_args.append("--continue-on-error")
+        run_button(
+            "运行安全研究流水线",
+            "run_safe_research_pipeline.py",
+            pipeline_args,
+            key="safe_research_pipeline",
+            artifacts=[
+                ("训练数据集", cfg.get("data", {}).get("dataset_path", "data/processed/OKX_BTC_USDT_SWAP_4h_dataset.parquet")),
+                ("模型文件", cfg.get("model", {}).get("model_path", "models/btc_direction_model.joblib")),
+                ("准入摘要", "reports/model_admission/model_strategy_admission_summary.json"),
+                ("运营摘要", "reports/operations/daily_operations_summary.json"),
+            ],
+            timeout_seconds=3600,
+        )
+
+    with tabs[-1]:
+        run_history_panel()
 
 elif page == "软件审查":
     st.title("软件包审查")
