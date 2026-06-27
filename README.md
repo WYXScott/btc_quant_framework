@@ -65,6 +65,16 @@ frontend/app.py              Streamlit console
 
 ## Quick Start
 
+Windows users can start the Streamlit console from the repository root:
+
+```bat
+start_dashboard.bat
+```
+
+Or double-click `start_dashboard.bat`.
+
+Manual setup:
+
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
